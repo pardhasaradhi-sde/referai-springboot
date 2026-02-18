@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #111111;
+  --black: #111111;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 900;
+    letter-spacing: -0.05em;
+    text-transform: uppercase;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#111] text-white px-8 py-4 font-bold text-sm uppercase tracking-wider hover:bg-[#333] transition-colors rounded-none inline-flex items-center justify-center;
+  }
+
+  .btn-outline {
+    @apply border border-[#111] text-[#111] px-8 py-4 font-bold text-sm uppercase tracking-wider hover:bg-[#111] hover:text-white transition-colors rounded-none inline-flex items-center justify-center;
+  }
+
+  .card-product {
+    @apply bg-white border border-[#e5e5e5] p-6 hover:border-[#111] transition-colors relative;
+  }
+}
+
+/* Custom Scrollbar for 'Editorial' feel */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5e5e5;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #111;
+}
