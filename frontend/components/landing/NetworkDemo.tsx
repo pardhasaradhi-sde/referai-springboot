@@ -1,12 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { User, CheckCircle2, MoreHorizontal, MousePointer2 } from "lucide-react";
-import { useState } from "react";
+import { User, CheckCircle2 } from "lucide-react";
 
 export function NetworkDemo() {
-  const [hoveredCard, setHoveredCard] = useState<number | null>(null);
-
   return (
     <div className="w-full max-w-md mx-auto relative h-[550px]">
         {/* Main Interface: Feed */}
@@ -106,3 +103,5 @@ export function NetworkDemo() {
     </div>
   );
 }
+
+

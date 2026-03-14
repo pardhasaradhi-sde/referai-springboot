@@ -1,16 +1,17 @@
 package com.referai.backend.mapper;
 
-import com.referai.backend.dto.*;
-import com.referai.backend.entity.*;
-import com.referai.backend.repository.ConversationRepository;
-import lombok.RequiredArgsConstructor;
+import com.referai.backend.dto.ConversationDto;
+import com.referai.backend.dto.MessageDto;
+import com.referai.backend.dto.ProfileDto;
+import com.referai.backend.dto.ReferralRequestDto;
+import com.referai.backend.entity.Conversation;
+import com.referai.backend.entity.Message;
+import com.referai.backend.entity.Profile;
+import com.referai.backend.entity.ReferralRequest;
 import org.springframework.stereotype.Component;
 
 @Component
-@RequiredArgsConstructor
 public class EntityMapper {
-
-    private final ConversationRepository conversationRepository;
 
     public ProfileDto toProfileDto(Profile p) {
         if (p == null) return null;
@@ -19,16 +20,14 @@ public class EntityMapper {
                 p.getRole() != null ? p.getRole().name().toLowerCase() : null,
                 p.getCompany(), p.getJobTitle(), p.getDepartment(), p.getSeniority(),
                 p.getSkills(), p.getYearsOfExperience(), p.getBio(), p.getLinkedinUrl(),
-                p.getResumeUrl(), p.getResumeText(), p.getTargetCompanies(),
-                p.getIsActive(), p.getCreatedAt()
+                p.getResumeUrl(), p.getResumeText(),
+                p.getResumeFileUrl(), p.getResumeFileName(), p.getResumeUploadedAt(),
+                p.getTargetCompanies(), p.getIsActive(), p.getCreatedAt()
         );
     }
 
     public ReferralRequestDto toRequestDto(ReferralRequest r) {
-        // Look up conversation if request is accepted
-        var conversationId = conversationRepository.findByRequestId(r.getId())
-                .map(Conversation::getId)
-                .orElse(null);
+        var conversationId = r.getConversation() != null ? r.getConversation().getId() : null;
 
         return new ReferralRequestDto(
                 r.getId(), toProfileDto(r.getSeeker()), toProfileDto(r.getReferrer()),

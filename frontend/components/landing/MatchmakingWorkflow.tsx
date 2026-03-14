@@ -7,13 +7,11 @@ import {
   Database, 
   Cpu, 
   ListFilter,
-  BrainCircuit,
   Binary,
   X,
-  Zap,
-  CheckCircle2
+  Zap
 } from "lucide-react";
-import { useRef, useEffect, useState } from "react";
+import { type ComponentType, type ReactNode, useRef, useEffect, useState } from "react";
 
 export function MatchmakingWorkflow() {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,7 +54,7 @@ export function MatchmakingWorkflow() {
     }
   }, []);
 
-  const nodeDetails: Record<string, { title: string; description: string; technical: string; icon: any }> = {
+  const nodeDetails: Record<string, { title: string; description: string; technical: string; icon: ComponentType<{ className?: string }> }> = {
     "input": {
         title: "Your Input",
         description: "Everything starts here. We take your LinkedIn PDF or resume text and the job description you're targeting. No manual data entry required.",
@@ -312,7 +310,19 @@ function ConnectionPath({ d }: { d: string }) {
     )
 }
 
-function WorkflowNode({ id, icon, label, subLabel, color = "gray", type = "process", delay = 0, onClick, selected }: any) {
+interface WorkflowNodeProps {
+    id: string;
+    icon: ReactNode;
+    label: string;
+    subLabel: string;
+    color?: "gray" | "blue" | "indigo" | "emerald" | "orange" | "purple";
+    type?: "source" | "process" | "sink";
+    delay?: number;
+    onClick: () => void;
+    selected: boolean;
+}
+
+function WorkflowNode({ id, icon, label, subLabel, color = "gray", type = "process", delay = 0, onClick, selected }: WorkflowNodeProps) {
     
     const getColorClasses = () => {
         if (selected) return "border-brand-accent bg-brand-accent shadow-md scale-105 ring-2 ring-brand-accent/20";

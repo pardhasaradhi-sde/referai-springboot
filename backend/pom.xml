@@ -94,7 +94,7 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- HTTP client for Gemini AI -->
+    <!-- HTTP client for Gemini AI and Appwrite -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webflux</artifactId>

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, KeyboardEvent } from "react";
 import { api } from "@/lib/api/client";
 import { useRouter } from "next/navigation";
+import { FileUpload } from "@/components/profile/FileUpload";
+import { parseDelimitedList } from "@/lib/utils";
 import type { Profile, UpdateProfileRequest } from "@/lib/api/types";
 
 type UserRole = "seeker" | "referrer" | "both";
@@ -16,18 +18,63 @@ export default function ProfileSetupPage() {
     // Seeker fields
     const [targetCompanies, setTargetCompanies] = useState("");
     const [resumeText, setResumeText] = useState("");
+    const [resumeFileName, setResumeFileName] = useState("");
 
     // Referrer fields
     const [company, setCompany] = useState("");
     const [jobTitle, setJobTitle] = useState("");
     const [department, setDepartment] = useState("");
     const [seniority, setSeniority] = useState("");
-    const [skills, setSkills] = useState("");
+    const [skills, setSkills] = useState<string[]>([]);
+    const [skillsInput, setSkillsInput] = useState("");
     const [yearsExp, setYearsExp] = useState("");
     const [bio, setBio] = useState("");
 
     const handleRoleSubmit = () => {
         setStep(2);
+    };
+
+    const mergeUniqueSkills = (existing: string[], incoming: string[]) => {
+        const seen = new Set(existing.map((skill) => skill.toLowerCase()));
+        const merged = [...existing];
+
+        for (const rawSkill of incoming) {
+            const skill = rawSkill.trim();
+            if (!skill) continue;
+
+            const key = skill.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                merged.push(skill);
+            }
+        }
+
+        return merged;
+    };
+
+    const addSkillsFromInput = () => {
+        const parsedSkills = parseDelimitedList(skillsInput);
+        if (!parsedSkills.length) return;
+
+        setSkills((prev) => mergeUniqueSkills(prev, parsedSkills));
+        setSkillsInput("");
+    };
+
+    const removeSkill = (skillToRemove: string) => {
+        setSkills((prev) => prev.filter((skill) => skill !== skillToRemove));
+    };
+
+    const handleSkillsKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter" || e.key === "," || e.key === ";") {
+            e.preventDefault();
+            addSkillsFromInput();
+            return;
+        }
+
+        if (e.key === "Backspace" && !skillsInput.trim() && skills.length > 0) {
+            e.preventDefault();
+            setSkills((prev) => prev.slice(0, -1));
+        }
     };
 
     const handleProfileSubmit = async () => {
@@ -37,10 +84,7 @@ export default function ProfileSetupPage() {
             const updateData: UpdateProfileRequest = { role };
 
             if (role === "seeker" || role === "both") {
-                updateData.targetCompanies = targetCompanies
-                    .split(",")
-                    .map((c) => c.trim())
-                    .filter(Boolean);
+                updateData.targetCompanies = parseDelimitedList(targetCompanies);
                 updateData.resumeText = resumeText;
             }
 
@@ -49,7 +93,7 @@ export default function ProfileSetupPage() {
                 updateData.jobTitle = jobTitle;
                 updateData.department = department;
                 updateData.seniority = seniority;
-                updateData.skills = skills.split(",").map((s) => s.trim()).filter(Boolean);
+                updateData.skills = skills;
                 updateData.yearsOfExperience = parseInt(yearsExp) || 0;
                 updateData.bio = bio;
             }
@@ -148,7 +192,7 @@ export default function ProfileSetupPage() {
                                 <div className="space-y-4">
                                     <div>
                                         <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                            Target Companies (comma-separated)
+                                            Target Companies (comma, semicolon, or new line separated)
                                         </label>
                                         <input
                                             type="text"
@@ -161,12 +205,25 @@ export default function ProfileSetupPage() {
 
                                     <div>
                                         <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                            Resume / Background
+                                            Upload Resume (PDF or DOCX)
+                                        </label>
+                                        <FileUpload
+                                            onUploadSuccess={(extractedText, fileUrl, fileName) => {
+                                                setResumeText(extractedText);
+                                                setResumeFileName(fileName);
+                                            }}
+                                            currentFileName={resumeFileName}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold uppercase tracking-widest block mb-2">
+                                            Resume Text (Edit if needed)
                                         </label>
                                         <textarea
                                             value={resumeText}
                                             onChange={(e) => setResumeText(e.target.value)}
-                                            placeholder="Paste your resume or describe your background..."
+                                            placeholder="Upload a file above or paste your resume text here..."
                                             rows={6}
                                             className="w-full px-4 py-3 border border-gray-200 focus:border-black outline-none resize-none"
                                         />
@@ -243,15 +300,54 @@ export default function ProfileSetupPage() {
 
                                     <div>
                                         <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                            Skills (comma-separated)
+                                            Skills (type a skill and press Enter)
                                         </label>
-                                        <input
-                                            type="text"
-                                            value={skills}
-                                            onChange={(e) => setSkills(e.target.value)}
-                                            placeholder="React, TypeScript, Node.js"
-                                            className="w-full px-4 py-3 border border-gray-200 focus:border-black outline-none"
-                                        />
+                                        <div className="space-y-3">
+                                            {skills.length > 0 && (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {skills.map((skill) => (
+                                                        <span
+                                                            key={skill}
+                                                            className="px-3 py-1 bg-gray-100 text-sm font-medium inline-flex items-center gap-2"
+                                                        >
+                                                            {skill}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeSkill(skill)}
+                                                                className="text-gray-500 hover:text-black leading-none"
+                                                                aria-label={`Remove ${skill}`}
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={skillsInput}
+                                                    onChange={(e) => setSkillsInput(e.target.value)}
+                                                    onKeyDown={handleSkillsKeyDown}
+                                                    onBlur={addSkillsFromInput}
+                                                    placeholder="Type skill and press Enter"
+                                                    className="flex-1 px-4 py-3 border border-gray-200 focus:border-black outline-none"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={addSkillsFromInput}
+                                                    disabled={!skillsInput.trim()}
+                                                    className="px-4 py-3 border border-gray-200 font-bold uppercase tracking-widest hover:border-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    Add
+                                                </button>
+                                            </div>
+
+                                            <p className="text-xs text-gray-500">
+                                                Press Enter to add a skill, then type the next one.
+                                            </p>
+                                        </div>
                                     </div>
 
                                     <div>

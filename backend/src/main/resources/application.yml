@@ -35,8 +35,23 @@ app:
   # Google Gemini
   gemini:
     api-key: ${GEMINI_API_KEY}
-    model: gemini-2.0-flash
+    model: ${APP_GEMINI_MODEL:gemini-2.0-flash}
     base-url: https://generativelanguage.googleapis.com/v1beta/models
+    max-retries: 3
+    base-retry-delay-ms: 1000
+    max-retry-delay-ms: 10000
+
+  # Appwrite Storage
+  appwrite:
+    endpoint: https://sgp.cloud.appwrite.io/v1
+    project-id: 69b3a4410037d827ccf9
+    api-key: ${APPWRITE_API_KEY}
+    bucket-id: referai-resumes
+
+  # Python AI Service
+  python-service:
+    url: ${PYTHON_SERVICE_URL:http://localhost:8010}
+    internal-key: ${PYTHON_INTERNAL_KEY:referai-internal-secret-2026}
 
 logging:
   level:

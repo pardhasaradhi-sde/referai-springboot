@@ -1,12 +1,12 @@
 "use client";
 
-import { use, useEffect, useState, useRef } from "react";
+import { use, useEffect, useState, useRef, useCallback } from "react";
 import { api, getToken, getCurrentUserId } from "@/lib/api/client";
 import { createStompClient, subscribeToConversation } from "@/lib/websocket";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Client } from "@stomp/stompjs";
-import { MoreVertical, Trash2, Edit3, Check, X, UserMinus } from "lucide-react";
+import { MoreVertical, UserMinus } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
 import type { Conversation, Message } from "@/lib/api/types";
 
@@ -16,46 +16,13 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     const [newMessage, setNewMessage] = useState("");
     const [conversation, setConversation] = useState<Conversation | null>(null);
     const [loading, setLoading] = useState(true);
-    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-    const [editContent, setEditContent] = useState("");
     const [showOptionsMenu, setShowOptionsMenu] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const stompClientRef = useRef<Client | null>(null);
     const router = useRouter();
     const currentUserId = getCurrentUserId();
 
-    useEffect(() => {
-        loadConversation();
-
-        // Set up STOMP WebSocket for real-time messages
-        const token = getToken();
-        if (token) {
-            const client = createStompClient(token);
-            stompClientRef.current = client;
-
-            client.onConnect = () => {
-                subscribeToConversation(client, id, (msg: unknown) => {
-                    const typedMsg = msg as Message;
-                    setMessages((prev) =>
-                        // De-duplicate by message ID
-                        prev.find((m) => m.id === typedMsg.id) ? prev : [...prev, typedMsg]
-                    );
-                });
-            };
-
-            client.activate();
-        }
-
-        return () => {
-            stompClientRef.current?.deactivate();
-        };
-    }, [id]);
-
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
-
-    const loadConversation = async () => {
+    const loadConversation = useCallback(async () => {
         try {
             const [conv, msgs] = await Promise.all([
                 api.get<Conversation>(`/api/conversations/${id}`),
@@ -68,21 +35,48 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
         } finally {
             setLoading(false);
         }
-    };
+    }, [id, router]);
+
+    useEffect(() => {
+        loadConversation();
+
+        const token = getToken();
+        if (token) {
+            const client = createStompClient(token);
+            stompClientRef.current = client;
+
+            client.onConnect = () => {
+                subscribeToConversation(client, id, (msg: unknown) => {
+                    const typedMsg = msg as Message;
+                    setMessages((prev) =>
+                        prev.find((m) => m.id === typedMsg.id) ? prev : [...prev, typedMsg]
+                    );
+                });
+            };
+
+            client.activate();
+        }
+
+        return () => {
+            stompClientRef.current?.deactivate();
+        };
+    }, [id, loadConversation]);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
 
     const handleSend = async () => {
         if (!newMessage.trim()) return;
 
         const content = newMessage;
-        setNewMessage(""); // Clear input immediately for UX
+        setNewMessage("");
 
         try {
-            // HTTP POST — backend persists and broadcasts via STOMP to all subscribers
             await api.post<Message>(`/api/conversations/${id}/messages`, { content });
-            // The message will arrive via the WebSocket subscription (de-duplication by ID handles duplicates)
         } catch (err) {
             console.error("Failed to send message:", err);
-            setNewMessage(content); // Restore on failure
+            setNewMessage(content);
         }
     };
 
@@ -123,28 +117,27 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
     return (
         <div className="h-screen bg-brand-gray flex flex-col font-sans selection:bg-brand-accent selection:text-black">
-            {/* Header - Editorial Style */}
             <header className="h-20 bg-white border-b border-gray-200 flex items-center justify-between px-8 sticky top-0 z-10">
                 <div className="flex items-center gap-6">
                     <Link
                         href="/dashboard/requests"
                         className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors"
                     >
-                        ← Exit Studio
+                        Exit Studio
                     </Link>
-                    <div className="h-8 w-px bg-gray-200"></div>
+                    <div className="h-8 w-px bg-gray-200" />
                     <div>
                         <h1 className="text-xl font-black uppercase tracking-tighter leading-none">
                             {otherUser.fullName}
                         </h1>
                         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-1">
-                            {otherUser.company} // {otherUser.role || "Member"}
+                            {otherUser.company} | {otherUser.role || "Member"}
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                         <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
                             Live Connection
                         </span>
@@ -174,7 +167,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                 </div>
             </header>
 
-            {/* Script-Style Messages */}
             <div className="flex-1 overflow-y-auto bg-white">
                 <div className="max-w-4xl mx-auto py-12 px-8 space-y-12">
                     {messages.length === 0 ? (
@@ -196,7 +188,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
 
                             return (
                                 <div key={msg.id} className="group flex gap-8">
-                                    {/* Avatar / Gutter */}
                                     <div className="w-24 flex-shrink-0 text-right pt-1 hidden md:block">
                                         {showHeader && (
                                             <span className="text-[10px] font-black uppercase tracking-widest block mb-1">
@@ -211,7 +202,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                                         </span>
                                     </div>
 
-                                    {/* Message Content - Script Style */}
                                     <div className="flex-1 max-w-2xl">
                                         <p className="text-lg md:text-xl font-medium leading-relaxed text-gray-900 whitespace-pre-wrap">
                                             {msg.content}
@@ -225,7 +215,6 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                 </div>
             </div>
 
-            {/* Input Studio */}
             <div className="bg-white border-t border-gray-200 p-8">
                 <div className="max-w-4xl mx-auto flex gap-6 items-end">
                     <div className="flex-1 relative">

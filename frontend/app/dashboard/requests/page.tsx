@@ -40,10 +40,10 @@ export default function RequestsPage() {
 
     const handleAccept = async (requestId: string) => {
         try {
-            const result = await api.post<{ conversationId: string }>(
+            const result = await api.post<Conversation>(
                 `/api/requests/${requestId}/accept`
             );
-            router.push(`/messages/${result.conversationId}`);
+            router.push(`/messages/${result.id}`);
         } catch (err: unknown) {
             alert(err instanceof Error ? err.message : "Failed to accept request");
         }
@@ -199,3 +199,4 @@ export default function RequestsPage() {
         </div>
     );
 }
+

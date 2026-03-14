@@ -1,5 +1,4 @@
-// ─── Auth ────────────────────────────────────────────────────────────────────
-
+// --- Auth ---
 export interface AuthResponse {
   accessToken: string;
   tokenType: string;
@@ -18,8 +17,7 @@ export interface LoginRequest {
   password: string;
 }
 
-// ─── Profile ─────────────────────────────────────────────────────────────────
-
+// --- Profile ---
 export interface Profile {
   id: string;
   email: string;
@@ -35,6 +33,9 @@ export interface Profile {
   linkedinUrl?: string;
   resumeUrl?: string;
   resumeText?: string;
+  resumeFileUrl?: string;
+  resumeFileName?: string;
+  resumeUploadedAt?: string;
   targetCompanies: string[];
   isActive: boolean;
 }
@@ -55,8 +56,35 @@ export interface UpdateProfileRequest {
   targetCompanies?: string[];
 }
 
-// ─── Referral Requests ───────────────────────────────────────────────────────
+// --- File Upload ---
+export interface UploadResumeResponse {
+  success: boolean;
+  fileUrl?: string;
+  fileName?: string;
+  extractedText?: string;
+  wordCount?: number;
+  uploadedAt?: string;
+  error?: string;
+}
 
+// --- JD Extraction ---
+export interface ExtractJdRequest {
+  input: string;
+}
+
+export interface ExtractJdResponse {
+  success: boolean;
+  isUrl: boolean;
+  source?: string;
+  jobTitle?: string;
+  company?: string;
+  location?: string;
+  description?: string;
+  error?: string;
+  fallbackMessage?: string;
+}
+
+// --- Referral Requests ---
 export interface ReferralRequest {
   id: string;
   seeker: Profile;
@@ -71,7 +99,7 @@ export interface ReferralRequest {
   initialMessage: string;
   createdAt: string;
   expiresAt: string;
-  conversationId?: string;  // ID of conversation if request is accepted
+  conversationId?: string;
 }
 
 export interface SendReferralRequestDto {
@@ -82,16 +110,7 @@ export interface SendReferralRequestDto {
   initialMessage: string;
 }
 
-export interface SendRequestResponse {
-  requestId: string;
-}
-
-export interface AcceptResponse {
-  conversationId: string;
-}
-
-// ─── Conversations & Messages ─────────────────────────────────────────────────
-
+// --- Conversations & Messages ---
 export interface Conversation {
   id: string;
   requestId: string;
@@ -118,10 +137,9 @@ export interface SendMessageRequest {
   content: string;
 }
 
-// ─── AI Matching ─────────────────────────────────────────────────────────────
-
+// --- AI Matching ---
 export interface MatchResult {
-  persona: Profile;  // Backend calls it 'persona' not 'profile'
+  persona: Profile;
   score: number;
   sharedSkills: string[];
   explanation: string;

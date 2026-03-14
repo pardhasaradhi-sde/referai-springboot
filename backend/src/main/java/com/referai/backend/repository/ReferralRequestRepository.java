@@ -11,10 +11,10 @@ import java.util.UUID;
 
 public interface ReferralRequestRepository extends JpaRepository<ReferralRequest, UUID> {
 
-    @Query("SELECT r FROM ReferralRequest r LEFT JOIN FETCH r.referrer WHERE r.seeker.id = :seekerId ORDER BY r.createdAt DESC")
+    @Query("SELECT r FROM ReferralRequest r LEFT JOIN FETCH r.referrer LEFT JOIN FETCH r.conversation WHERE r.seeker.id = :seekerId ORDER BY r.createdAt DESC")
     List<ReferralRequest> findBySeekerIdOrderByCreatedAtDesc(UUID seekerId);
 
-    @Query("SELECT r FROM ReferralRequest r LEFT JOIN FETCH r.seeker WHERE r.referrer.id = :referrerId ORDER BY r.createdAt DESC")
+    @Query("SELECT r FROM ReferralRequest r LEFT JOIN FETCH r.seeker LEFT JOIN FETCH r.conversation WHERE r.referrer.id = :referrerId ORDER BY r.createdAt DESC")
     List<ReferralRequest> findByReferrerIdOrderByCreatedAtDesc(UUID referrerId);
 
     /**
@@ -32,3 +32,4 @@ public interface ReferralRequestRepository extends JpaRepository<ReferralRequest
         return findActiveRequestBetween(seekerId, referrerId).isPresent();
     }
 }
+

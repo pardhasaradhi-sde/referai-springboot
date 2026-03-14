@@ -61,6 +61,15 @@ public class Profile {
     @Column(name = "resume_text", columnDefinition = "TEXT")
     private String resumeText;
 
+    @Column(name = "resume_file_url")
+    private String resumeFileUrl;
+
+    @Column(name = "resume_file_name")
+    private String resumeFileName;
+
+    @Column(name = "resume_uploaded_at")
+    private Instant resumeUploadedAt;
+
     @Column(name = "target_companies", columnDefinition = "TEXT[]")
     @org.hibernate.annotations.Array(length = 50)
     private List<String> targetCompanies;

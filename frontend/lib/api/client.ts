@@ -1,34 +1,40 @@
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
-// ─── Token / Auth helpers ────────────────────────────────────────────────────
+const TOKEN_STORAGE_KEY = "referai_token";
+const USER_ID_STORAGE_KEY = "referai_user_id";
+
+// Token is persisted client-side for prototype velocity.
+// For production deployments, migrate to backend-set httpOnly secure cookies.
+
+function writeAuthCookie(token: string): void {
+  const maxAge = 7 * 24 * 60 * 60;
+  const secureAttr = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `referai_token=${token}; path=/; max-age=${maxAge}; SameSite=Strict${secureAttr}`;
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("referai_token");
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
 }
 
 export function setAuthInfo(token: string, userId: string): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem("referai_token", token);
-  localStorage.setItem("referai_user_id", userId);
-  // Set cookie so Next.js middleware can check auth server-side
-  const maxAge = 7 * 24 * 60 * 60;
-  document.cookie = `referai_token=${token}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(USER_ID_STORAGE_KEY, userId);
+  writeAuthCookie(token);
 }
 
 export function removeAuthInfo(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("referai_token");
-  localStorage.removeItem("referai_user_id");
-  document.cookie = "referai_token=; path=/; max-age=0; SameSite=Lax";
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(USER_ID_STORAGE_KEY);
+  document.cookie = "referai_token=; path=/; max-age=0; SameSite=Strict";
 }
 
 export function getCurrentUserId(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("referai_user_id");
+  return localStorage.getItem(USER_ID_STORAGE_KEY);
 }
-
-// ─── HTTP error class ────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -36,8 +42,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
-
-// ─── Core fetch wrapper ──────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getToken();
@@ -66,11 +70,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     let message = res.statusText;
     try {
       const errBody = await res.json();
-      // Handle Spring Boot ProblemDetail format
       message = errBody.detail || errBody.message || errBody.title || message;
       console.error("API Error:", { status: res.status, path, errBody });
     } catch {
-      // ignore parse errors
       console.error("API Error:", { status: res.status, path, statusText: res.statusText });
     }
     throw new ApiError(res.status, message);
@@ -80,8 +82,6 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   return res.json() as Promise<T>;
 }
-
-// ─── Public API surface ──────────────────────────────────────────────────────
 
 export const api = {
   get: <T>(path: string) => apiFetch<T>(path),

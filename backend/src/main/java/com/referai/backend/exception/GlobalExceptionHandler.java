@@ -48,6 +48,14 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(ExternalServiceException.class)
+    public ProblemDetail handleExternalService(ExternalServiceException ex) {
+        log.warn("External service error: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+        pd.setType(URI.create("about:blank"));
+        return pd;
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ProblemDetail handleRuntime(RuntimeException ex) {
         log.error("Internal error", ex);

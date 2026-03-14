@@ -2,6 +2,7 @@ package com.referai.backend.service;
 
 import com.referai.backend.dto.ProfileDto;
 import com.referai.backend.dto.UpdateProfileRequest;
+import com.referai.backend.dto.UploadResumeResponse;
 import com.referai.backend.entity.Profile;
 import com.referai.backend.entity.Role;
 import com.referai.backend.mapper.EntityMapper;
@@ -10,8 +11,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -21,6 +25,8 @@ public class ProfileService {
 
     private final ProfileRepository profileRepository;
     private final EntityMapper mapper;
+    private final FileStorageService fileStorageService;
+    private final PythonAiService pythonAiService;
 
     public ProfileDto getProfile(UUID userId) {
         return profileRepository.findById(userId)
@@ -77,5 +83,91 @@ public class ProfileService {
                 .filter(p -> p.getRole() == Role.REFERRER || p.getRole() == Role.BOTH)
                 .map(mapper::toProfileDto)
                 .orElseThrow(() -> new IllegalArgumentException("Referrer not found"));
+    }
+
+    @Transactional
+    public UploadResumeResponse uploadResume(UUID userId, MultipartFile file) {
+        try {
+            // Validate file
+            if (file.isEmpty()) {
+                return UploadResumeResponse.builder()
+                        .success(false)
+                        .error("File is empty")
+                        .build();
+            }
+
+            String originalFilename = file.getOriginalFilename();
+            if (originalFilename == null) {
+                return UploadResumeResponse.builder()
+                        .success(false)
+                        .error("Invalid filename")
+                        .build();
+            }
+
+            // Validate file type
+            String extension = originalFilename.toLowerCase();
+            if (!extension.endsWith(".pdf") && !extension.endsWith(".docx")) {
+                return UploadResumeResponse.builder()
+                        .success(false)
+                        .error("Only PDF and DOCX files are supported")
+                        .build();
+            }
+
+            // Validate file size (5MB max)
+            if (file.getSize() > 5 * 1024 * 1024) {
+                return UploadResumeResponse.builder()
+                        .success(false)
+                        .error("File size must be less than 5MB")
+                        .build();
+            }
+
+            log.info("Processing resume upload for user {}: {}", userId, originalFilename);
+
+            // Extract text using Python service
+            Map<String, Object> extractionResult = pythonAiService.extractResumeText(
+                    file.getBytes(), 
+                    originalFilename
+            );
+
+            if (!(Boolean) extractionResult.get("success")) {
+                return UploadResumeResponse.builder()
+                        .success(false)
+                        .error("Failed to extract text: " + extractionResult.get("error"))
+                        .build();
+            }
+
+            // Upload file to Appwrite
+            String fileUrl = fileStorageService.uploadFile(file, userId);
+
+            // Update profile
+            Profile profile = profileRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+
+            String extractedText = (String) extractionResult.get("text");
+            profile.setResumeText(extractedText);
+            profile.setResumeFileUrl(fileUrl);
+            profile.setResumeFileName(originalFilename);
+            profile.setResumeUploadedAt(Instant.now());
+
+            profileRepository.save(profile);
+
+            log.info("Successfully uploaded resume for user {}", userId);
+
+            return UploadResumeResponse.builder()
+                    .success(true)
+                    .fileUrl(fileUrl)
+                    .fileName(originalFilename)
+                    .extractedText(extractedText)
+                    .wordCount((Integer) extractionResult.get("wordCount"))
+                    .uploadedAt(profile.getResumeUploadedAt())
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to upload resume for user {}: {}", userId, e.getMessage(), e);
+            return UploadResumeResponse.builder()
+                    .success(false)
+                    .error("Upload failed: " + e.getMessage())
+                    .build();
+        }
     }
 }

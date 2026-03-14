@@ -1,19 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, KeyboardEvent } from "react";
 import { api } from "@/lib/api/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { User, Briefcase, FileText, Save } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
 import { LoadingPage } from "@/components/ui/Loading";
+import { FileUpload } from "@/components/profile/FileUpload";
+import { parseDelimitedList } from "@/lib/utils";
 import type { Profile, UpdateProfileRequest } from "@/lib/api/types";
 
 export default function ProfilePage() {
-    const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [editing, setEditing] = useState(false);
+    const [skillsInput, setSkillsInput] = useState("");
 
     const [formData, setFormData] = useState({
         fullName: "",
@@ -25,6 +27,8 @@ export default function ProfilePage() {
         seniority: "",
         skills: [] as string[],
         resumeText: "",
+        resumeFileUrl: "",
+        resumeFileName: "",
         bio: "",
         linkedinUrl: "",
         targetCompanies: [] as string[],
@@ -32,14 +36,9 @@ export default function ProfilePage() {
 
     const router = useRouter();
 
-    useEffect(() => {
-        loadProfile();
-    }, []);
-
-    const loadProfile = async () => {
+    const loadProfile = useCallback(async () => {
         try {
             const profileData = await api.get<Profile>("/api/profiles/me");
-            setProfile(profileData);
             setFormData({
                 fullName: profileData.fullName || "",
                 role: profileData.role || "seeker",
@@ -50,6 +49,8 @@ export default function ProfilePage() {
                 seniority: profileData.seniority || "",
                 skills: profileData.skills || [],
                 resumeText: profileData.resumeText || "",
+                resumeFileUrl: profileData.resumeFileUrl || "",
+                resumeFileName: profileData.resumeFileName || "",
                 bio: profileData.bio || "",
                 linkedinUrl: profileData.linkedinUrl || "",
                 targetCompanies: profileData.targetCompanies || [],
@@ -59,7 +60,11 @@ export default function ProfilePage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [router]);
+
+    useEffect(() => {
+        void loadProfile();
+    }, [loadProfile]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -82,6 +87,7 @@ export default function ProfilePage() {
             await api.put<Profile>("/api/profiles/me", updatePayload);
             showToast("Profile updated successfully!", "success");
             setEditing(false);
+            setSkillsInput("");
             await loadProfile();
         } catch (error: unknown) {
             showToast(error instanceof Error ? error.message : "Failed to update profile", "error");
@@ -90,14 +96,60 @@ export default function ProfilePage() {
         }
     };
 
-    const handleSkillsChange = (value: string) => {
-        const skills = value.split(",").map((s) => s.trim()).filter(Boolean);
-        setFormData({ ...formData, skills });
+    const mergeUniqueSkills = (existing: string[], incoming: string[]) => {
+        const seen = new Set(existing.map((skill) => skill.toLowerCase()));
+        const merged = [...existing];
+
+        for (const rawSkill of incoming) {
+            const skill = rawSkill.trim();
+            if (!skill) continue;
+
+            const key = skill.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                merged.push(skill);
+            }
+        }
+
+        return merged;
+    };
+
+    const addSkillsFromInput = () => {
+        const parsedSkills = parseDelimitedList(skillsInput);
+        if (!parsedSkills.length) return;
+
+        setFormData((prev) => ({
+            ...prev,
+            skills: mergeUniqueSkills(prev.skills, parsedSkills),
+        }));
+        setSkillsInput("");
+    };
+
+    const removeSkill = (skillToRemove: string) => {
+        setFormData((prev) => ({
+            ...prev,
+            skills: prev.skills.filter((skill) => skill !== skillToRemove),
+        }));
+    };
+
+    const handleSkillsKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter" || e.key === "," || e.key === ";") {
+            e.preventDefault();
+            addSkillsFromInput();
+            return;
+        }
+
+        if (e.key === "Backspace" && !skillsInput.trim() && formData.skills.length > 0) {
+            e.preventDefault();
+            setFormData((prev) => ({
+                ...prev,
+                skills: prev.skills.slice(0, -1),
+            }));
+        }
     };
 
     const handleCompaniesChange = (value: string) => {
-        const companies = value.split(",").map((s) => s.trim()).filter(Boolean);
-        setFormData({ ...formData, targetCompanies: companies });
+        setFormData((prev) => ({ ...prev, targetCompanies: parseDelimitedList(value) }));
     };
 
     if (loading) return <LoadingPage />;
@@ -271,17 +323,56 @@ export default function ProfilePage() {
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                    Skills (comma-separated)
+                                    Skills (type a skill and press Enter)
                                 </label>
-                                <input
-                                    type="text"
-                                    value={formData.skills.join(", ")}
-                                    onChange={(e) => handleSkillsChange(e.target.value)}
-                                    disabled={!editing}
-                                    placeholder="React, TypeScript, Node.js, Python"
-                                    className="w-full px-4 py-3 border border-gray-200 focus:border-black outline-none disabled:bg-gray-50"
-                                />
-                                {formData.skills.length > 0 && (
+                                {editing ? (
+                                    <div className="space-y-3">
+                                        {formData.skills.length > 0 && (
+                                            <div className="flex flex-wrap gap-2">
+                                                {formData.skills.map((skill) => (
+                                                    <span
+                                                        key={skill}
+                                                        className="px-3 py-1 bg-gray-100 text-sm font-medium inline-flex items-center gap-2"
+                                                    >
+                                                        {skill}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeSkill(skill)}
+                                                            className="text-gray-500 hover:text-black leading-none"
+                                                            aria-label={`Remove ${skill}`}
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={skillsInput}
+                                                onChange={(e) => setSkillsInput(e.target.value)}
+                                                onKeyDown={handleSkillsKeyDown}
+                                                onBlur={addSkillsFromInput}
+                                                placeholder="Type skill and press Enter"
+                                                className="flex-1 px-4 py-3 border border-gray-200 focus:border-black outline-none"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={addSkillsFromInput}
+                                                disabled={!skillsInput.trim()}
+                                                className="px-4 py-3 border border-gray-200 font-bold uppercase tracking-widest hover:border-black disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Add
+                                            </button>
+                                        </div>
+
+                                        <p className="text-xs text-gray-500">
+                                            Press Enter to add a skill, then type the next one.
+                                        </p>
+                                    </div>
+                                ) : (
                                     <div className="flex flex-wrap gap-2 mt-3">
                                         {formData.skills.map((skill) => (
                                             <span key={skill} className="px-3 py-1 bg-gray-100 text-sm font-medium">
@@ -296,7 +387,7 @@ export default function ProfilePage() {
                                 <>
                                     <div>
                                         <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                            Target Companies (comma-separated)
+                                            Target Companies (comma, semicolon, or new line separated)
                                         </label>
                                         <input
                                             type="text"
@@ -308,21 +399,45 @@ export default function ProfilePage() {
                                         />
                                     </div>
 
+                                    {editing && (
+                                        <div>
+                                            <label className="text-xs font-bold uppercase tracking-widest block mb-2">
+                                                Upload Resume (PDF or DOCX)
+                                            </label>
+                                            <FileUpload
+                                                onUploadSuccess={(extractedText, fileUrl, fileName) => {
+                                                    setFormData((prev) => ({
+                                                        ...prev,
+                                                        resumeText: extractedText,
+                                                        resumeFileUrl: fileUrl,
+                                                        resumeFileName: fileName,
+                                                    }));
+                                                }}
+                                                currentFileName={formData.resumeFileName}
+                                            />
+                                        </div>
+                                    )}
+
                                     <div>
                                         <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                            Resume / Experience
+                                            Resume Text {editing && "(Edit if needed)"}
                                         </label>
                                         <textarea
                                             value={formData.resumeText}
                                             onChange={(e) => setFormData({ ...formData, resumeText: e.target.value })}
                                             disabled={!editing}
                                             rows={12}
-                                            placeholder="Paste your resume or describe your experience..."
+                                            placeholder="Upload a file above or paste your resume text here..."
                                             className="w-full px-4 py-3 border border-gray-200 focus:border-black outline-none disabled:bg-gray-50 resize-none font-mono text-sm"
                                         />
                                         {formData.resumeText && !editing && (
                                             <p className="text-xs text-gray-500 mt-2">
                                                 {formData.resumeText.length} characters
+                                            </p>
+                                        )}
+                                        {formData.resumeFileName && !editing && (
+                                            <p className="text-xs text-gray-600 mt-2">
+                                                Uploaded file: {formData.resumeFileName}
                                             </p>
                                         )}
                                     </div>
@@ -345,7 +460,8 @@ export default function ProfilePage() {
                             <button
                                 onClick={() => {
                                     setEditing(false);
-                                    loadProfile();
+                                    setSkillsInput("");
+                                    void loadProfile();
                                 }}
                                 className="px-8 py-3 border-2 border-gray-200 font-bold uppercase tracking-widest hover:border-black transition-colors"
                             >

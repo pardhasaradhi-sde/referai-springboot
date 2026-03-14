@@ -4,15 +4,25 @@ import type { NextRequest } from "next/server";
 const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/referrers", "/messages", "/request"];
 const AUTH_PREFIXES = ["/auth/login", "/auth/signup"];
 
+function looksLikeJwt(token: string | undefined): boolean {
+  if (!token) return false;
+  return token.split(".").length === 3;
+}
+
 export function middleware(request: NextRequest) {
-  const token = request.cookies.get("referai_token")?.value;
+  const rawToken = request.cookies.get("referai_token")?.value;
+  const token = looksLikeJwt(rawToken) ? rawToken : undefined;
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
 
   if (isProtected && !token) {
-    return NextResponse.redirect(new URL("/auth/login", request.url));
+    const response = NextResponse.redirect(new URL("/auth/login", request.url));
+    if (rawToken && !token) {
+      response.cookies.delete("referai_token");
+    }
+    return response;
   }
 
   if (isAuthPath && token) {

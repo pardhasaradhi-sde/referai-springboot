@@ -1,19 +1,16 @@
 import { Client, IMessage } from "@stomp/stompjs";
+import SockJS from "sockjs-client";
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
 /**
  * Creates a STOMP client that connects via SockJS to the Spring Boot backend.
- * SockJS is browser-only, so the factory is wrapped in a lazy require.
+ * This utility is only used from client components.
  */
 export function createStompClient(token: string): Client {
   const client = new Client({
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     webSocketFactory: () => {
-      // Dynamic require avoids SSR issues (SockJS is browser-only)
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const SockJS = require("sockjs-client") as new (url: string) => WebSocket;
       return new SockJS(`${BACKEND_URL}/ws`);
     },
     connectHeaders: {
@@ -61,3 +58,4 @@ export function sendStompMessage(
     body: JSON.stringify({ content }),
   });
 }
+

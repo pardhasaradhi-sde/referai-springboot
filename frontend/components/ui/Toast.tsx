@@ -13,6 +13,11 @@ interface ToastProps {
     onClose: () => void;
 }
 
+interface ToastEventDetail {
+    message: string;
+    type: ToastType;
+}
+
 const icons = {
     success: CheckCircle,
     error: XCircle,
@@ -68,20 +73,19 @@ export function Toast({ message, type = "info", duration = 3000, onClose }: Toas
     );
 }
 
-// Toast container for managing multiple toasts
 export function ToastContainer() {
     const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: ToastType }>>([]);
 
     useEffect(() => {
-        // Listen for custom toast events
-        const handleToast = (e: CustomEvent) => {
-            const { message, type } = e.detail;
+        const handleToast = (event: Event) => {
+            const customEvent = event as CustomEvent<ToastEventDetail>;
+            const { message, type } = customEvent.detail;
             const id = Math.random().toString(36).substring(7);
             setToasts((prev) => [...prev, { id, message, type }]);
         };
 
-        window.addEventListener("toast" as any, handleToast);
-        return () => window.removeEventListener("toast" as any, handleToast);
+        window.addEventListener("toast", handleToast);
+        return () => window.removeEventListener("toast", handleToast);
     }, []);
 
     return (
@@ -98,7 +102,6 @@ export function ToastContainer() {
     );
 }
 
-// Helper function to show toasts
 export function showToast(message: string, type: ToastType = "info") {
-    window.dispatchEvent(new CustomEvent("toast", { detail: { message, type } }));
+    window.dispatchEvent(new CustomEvent<ToastEventDetail>("toast", { detail: { message, type } }));
 }

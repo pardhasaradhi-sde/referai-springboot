@@ -19,6 +19,9 @@ public record ProfileDto(
         String linkedinUrl,
         String resumeUrl,
         String resumeText,
+        String resumeFileUrl,
+        String resumeFileName,
+        Instant resumeUploadedAt,
         List<String> targetCompanies,
         Boolean isActive,
         Instant createdAt

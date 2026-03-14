@@ -27,6 +27,9 @@ public class ReferralRequest {
     @JoinColumn(name = "referrer_id", nullable = false)
     private Profile referrer;
 
+    @OneToOne(mappedBy = "request", fetch = FetchType.LAZY)
+    private Conversation conversation;
+
     @Column(name = "job_title", nullable = false)
     private String jobTitle;
 

@@ -7,7 +7,8 @@ import Link from "next/link";
 import { Users, MessageSquare, FileText, Search, Sparkles, User as UserIcon } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
 import { LoadingSpinner } from "@/components/ui/Loading";
-import type { Profile, MatchResult, AnalyzeResponse } from "@/lib/api/types";
+import { JobDescriptionInput } from "@/components/dashboard/JobDescriptionInput";
+import type { Profile, MatchResult, AnalyzeResponse, ExtractJdResponse } from "@/lib/api/types";
 
 export default function DashboardPage() {
     const [activeTab, setActiveTab] = useState<"home" | "match">("home");
@@ -20,6 +21,7 @@ export default function DashboardPage() {
     const [targetCompany, setTargetCompany] = useState("");
     const [analyzing, setAnalyzing] = useState(false);
     const [matches, setMatches] = useState<MatchResult[]>([]);
+    const [extractedJobData, setExtractedJobData] = useState<ExtractJdResponse | null>(null);
 
     const router = useRouter();
 
@@ -310,18 +312,16 @@ export default function DashboardPage() {
                                         />
                                     </div>
 
-                                    <div>
-                                        <label className="text-xs font-bold uppercase tracking-widest block mb-2">
-                                            Job Description *
-                                        </label>
-                                        <textarea
-                                            value={jobDescription}
-                                            onChange={(e) => setJobDescription(e.target.value)}
-                                            placeholder="Paste the complete job description here..."
-                                            rows={16}
-                                            className="w-full px-4 py-3 border border-gray-200 focus:border-black outline-none resize-none"
-                                        />
-                                    </div>
+                                    <JobDescriptionInput
+                                        value={jobDescription}
+                                        onChange={setJobDescription}
+                                        onExtractSuccess={(data) => {
+                                            setExtractedJobData(data);
+                                            if (data.company && !targetCompany) {
+                                                setTargetCompany(data.company);
+                                            }
+                                        }}
+                                    />
 
                                     <button
                                         onClick={handleAnalyze}

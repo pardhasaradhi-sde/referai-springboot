@@ -6,7 +6,8 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:smoke": "node tests/smoke-check.mjs"
   },
   "dependencies": {
     "@stomp/stompjs": "^7.0.0",
@@ -16,6 +17,7 @@
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-dropzone": "^14.3.5",
     "sockjs-client": "^1.6.1",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
@@ -33,3 +35,4 @@
     "typescript": "^5"
   }
 }
+

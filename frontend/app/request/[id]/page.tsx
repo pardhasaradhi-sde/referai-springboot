@@ -7,7 +7,7 @@ import Link from "next/link";
 import { ArrowLeft, Sparkles, Send, Edit3 } from "lucide-react";
 import { showToast } from "@/components/ui/Toast";
 import { LoadingPage, LoadingSpinner } from "@/components/ui/Loading";
-import type { Profile, GenerateMessageResponse, SendRequestResponse } from "@/lib/api/types";
+import type { Profile, GenerateMessageResponse, ReferralRequest } from "@/lib/api/types";
 
 export default function RequestPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -84,7 +84,7 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
 
         setSending(true);
         try {
-            const result = await api.post<SendRequestResponse>("/api/requests", {
+            const result = await api.post<ReferralRequest>("/api/requests", {
                 referrerId: referrer.id,
                 jobTitle: jobDescription
                     ? jobDescription.slice(0, 100)
@@ -94,7 +94,7 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
                 initialMessage: message,
             });
 
-            if (result.requestId) {
+            if (result.id) {
                 showToast("Request sent successfully!", "success");
                 setTimeout(() => router.push("/dashboard/requests"), 1500);
             }
@@ -247,3 +247,4 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
         </div>
     );
 }
+
