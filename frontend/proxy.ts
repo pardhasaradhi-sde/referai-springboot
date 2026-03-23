@@ -1,3 +1,7 @@
+/**
+ * Next.js 16+ network boundary (replaces deprecated middleware.ts).
+ * @see https://nextjs.org/docs/app/api-reference/file-conventions/proxy
+ */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -9,7 +13,7 @@ function looksLikeJwt(token: string | undefined): boolean {
   return token.split(".").length === 3;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const rawToken = request.cookies.get("referai_token")?.value;
   const token = looksLikeJwt(rawToken) ? rawToken : undefined;
   const { pathname } = request.nextUrl;

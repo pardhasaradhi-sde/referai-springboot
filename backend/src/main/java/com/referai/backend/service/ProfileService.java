@@ -9,12 +9,14 @@ import com.referai.backend.mapper.EntityMapper;
 import com.referai.backend.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,6 +29,9 @@ public class ProfileService {
     private final EntityMapper mapper;
     private final FileStorageService fileStorageService;
     private final PythonAiService pythonAiService;
+
+    @Value("${app.python-service.index-referrers-enabled:true}")
+    private boolean indexReferrersEnabled;
 
     public ProfileDto getProfile(UUID userId) {
         return profileRepository.findById(userId)
@@ -61,21 +66,43 @@ public class ProfileService {
 
         Profile saved = profileRepository.save(profile);
         log.debug("Profile updated successfully: role={}, company={}", saved.getRole(), saved.getCompany());
+
+        // Trigger referrer profile indexing for semantic search (async, non-blocking)
+        if (!indexReferrersEnabled) {
+            log.info("Referrer indexing is disabled. Skipping indexReferrer call for user {}", saved.getId());
+        } else if (saved.getRole() == Role.REFERRER || saved.getRole() == Role.BOTH) {
+            try {
+                pythonAiService.indexReferrerProfile(
+                    saved.getId().toString(),
+                    saved.getBio(),
+                    saved.getSkills(),
+                    saved.getJobTitle(),
+                    saved.getCompany(),
+                    saved.getDepartment(),
+                    saved.getSeniority(),
+                    saved.getYearsOfExperience()
+                );
+            } catch (Exception e) {
+                log.warn("Failed to index referrer profile after update: {}", e.getMessage());
+            }
+        }
+
         return mapper.toProfileDto(saved);
     }
 
-    public List<ProfileDto> getActiveReferrers(UUID currentUserId, String company, String search) {
-        List<Profile> referrers;
+
+    public Page<ProfileDto> getActiveReferrers(UUID currentUserId, String company, String search, Pageable pageable) {
+        Page<Profile> referrers;
 
         if (search != null && !search.isBlank()) {
-            referrers = profileRepository.searchReferrers(search, currentUserId);
+            referrers = profileRepository.searchReferrers(search, currentUserId, pageable);
         } else if (company != null && !company.isBlank()) {
-            referrers = profileRepository.findActiveReferrersByCompany(company, currentUserId);
+            referrers = profileRepository.findActiveReferrersByCompany(company, currentUserId, pageable);
         } else {
-            referrers = profileRepository.findActiveReferrers(currentUserId);
+            referrers = profileRepository.findActiveReferrers(currentUserId, pageable);
         }
 
-        return referrers.stream().map(mapper::toProfileDto).toList();
+        return referrers.map(mapper::toProfileDto);
     }
 
     public ProfileDto getReferrerById(UUID referrerId) {

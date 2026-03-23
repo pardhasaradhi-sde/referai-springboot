@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -19,6 +19,7 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
 
     const [message, setMessage] = useState("");
     const [isEditing, setIsEditing] = useState(false);
+    const initialGenerationTriggered = useRef(false);
 
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -39,8 +40,13 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
 
             setProfile(profileData);
             setReferrer(referrerData);
-            // Auto-generate message once both profiles are loaded
-            await generateMessage(profileData, referrerData);
+
+            // React Strict Mode can invoke effects twice in development.
+            // Ensure initial generation runs only once.
+            if (!initialGenerationTriggered.current) {
+                initialGenerationTriggered.current = true;
+                await generateMessage(profileData, referrerData);
+            }
         } catch {
             router.push("/auth/login");
         } finally {
@@ -51,14 +57,16 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
     const generateMessage = async (seekerProfile: Profile, referrerProfile: Profile) => {
         setGenerating(true);
         try {
+            // Try UUID-based Python AI endpoint first
             const result = await api.post<GenerateMessageResponse>("/api/matching/generate-message", {
+                referrerId: referrerProfile.id,
                 seekerName: seekerProfile.fullName,
                 referrerName: referrerProfile.fullName,
                 referrerCompany: referrerProfile.company || "the company",
                 jobContext: jobDescription || `Position at ${referrerProfile.company}`,
                 sharedSkills: seekerProfile.skills?.slice(0, 5) || [],
             });
-            setMessage(result.message);
+            setMessage(result.message || "");
         } catch {
             // Fallback message
             setMessage(
@@ -101,7 +109,6 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : "Failed to send request";
 
-            // Handle specific error cases
             if (errorMessage.includes("already have")) {
                 showToast("You already have a pending or active request with this referrer", "warning");
                 setTimeout(() => router.push("/dashboard/requests"), 2000);
@@ -121,7 +128,7 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
     return (
         <div className="min-h-screen bg-white">
             {/* Header */}
-            <nav className="border-b border-gray-200 px-12 py-6">
+            <nav className="border-b border-gray-200 px-4 md:px-12 py-4 md:py-6">
                 <Link
                     href="/dashboard"
                     className="flex items-center gap-3 text-sm font-bold uppercase tracking-widest hover:text-gray-600"
@@ -131,20 +138,20 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
                 </Link>
             </nav>
 
-            <div className="max-w-4xl mx-auto px-12 py-12">
+            <div className="max-w-4xl mx-auto px-4 md:px-12 py-8 md:py-12">
                 {/* Referrer Info */}
-                <div className="mb-12 p-8 border border-gray-200">
-                    <div className="flex items-start gap-6">
+                <div className="mb-8 md:mb-12 p-6 sm:p-8 border border-gray-200">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 text-center sm:text-left">
                         <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center font-black text-3xl flex-shrink-0">
                             {referrer.fullName[0]}
                         </div>
-                        <div className="flex-1">
-                            <h1 className="text-3xl font-black mb-2">{referrer.fullName}</h1>
-                            <p className="text-gray-600 mb-3">
+                        <div className="flex-1 w-full mt-2 sm:mt-0">
+                            <h1 className="text-2xl sm:text-3xl font-black mb-2">{referrer.fullName}</h1>
+                            <p className="text-gray-600 mb-3 text-sm sm:text-base">
                                 {referrer.jobTitle} at {referrer.company}
                             </p>
                             {referrer.skills && referrer.skills.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
+                                <div className="flex flex-wrap justify-center sm:justify-start gap-2">
                                     {referrer.skills.slice(0, 6).map((skill) => (
                                         <span key={skill} className="px-3 py-1 bg-gray-100 text-sm font-medium">
                                             {skill}
@@ -162,14 +169,14 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
                 {/* Message Section */}
                 <div className="space-y-6">
                     <div>
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-0 mb-4">
                             <div>
-                                <h2 className="text-2xl font-black uppercase tracking-tight">Your Message</h2>
+                                <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight">Your Message</h2>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    {generating ? "AI is generating..." : "AI-generated message (you can edit)"}
+                                    {generating ? "AI is crafting your message..." : "AI-generated • Edit freely"}
                                 </p>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
                                 <button
                                     onClick={handleRegenerateMessage}
                                     disabled={generating}
@@ -219,7 +226,7 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
                     </div>
 
                     {/* Actions */}
-                    <div className="flex gap-4">
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-8">
                         <button
                             onClick={handleSendRequest}
                             disabled={sending || generating}
@@ -230,7 +237,7 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
                         </button>
                         <Link
                             href="/dashboard"
-                            className="px-8 py-4 border-2 border-gray-200 font-bold uppercase tracking-widest hover:border-black transition-colors flex items-center justify-center"
+                            className="px-8 py-4 border-2 border-gray-200 font-bold uppercase tracking-widest hover:border-black transition-colors flex items-center justify-center w-full sm:w-auto"
                         >
                             Cancel
                         </Link>
@@ -247,4 +254,3 @@ export default function RequestPage({ params }: { params: Promise<{ id: string }
         </div>
     );
 }
-

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
@@ -46,6 +46,28 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("app.startup.migrations_skipped")
 
+    # Initialize Groq (LLM) and Gemini (embeddings), then compile LangGraph agents.
+    if settings.groq_api_key and settings.gemini_api_key:
+        try:
+            from app.services.llm_client import _ensure_configured as ensure_llm_configured
+            from app.services.gemini_client import _ensure_configured as ensure_embedding_configured
+
+            ensure_llm_configured()
+            ensure_embedding_configured()
+            logger.info("app.startup.ai_clients_configured", llm="groq", embeddings="gemini")
+
+            # Import graph modules to trigger singleton compilation
+            from app.agents.matching.graph import get_matching_graph  # noqa: F401
+            from app.agents.coach.graph import get_coach_graph  # noqa: F401
+            logger.info("app.startup.langgraph_agents_compiled")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("app.startup.ai_init_failed", error=str(exc))
+    else:
+        logger.warning(
+            "app.startup.ai_not_configured",
+            reason="GROQ_API_KEY and GEMINI_API_KEY are both required",
+        )
+
     logger.info("app.startup.done")
 
     yield
@@ -58,8 +80,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="ReferAI AI Service",
-    version="0.1.0",
-    description="Standalone AI microservice for ReferAI",
+    version="0.2.0",
+    description="Standalone AI microservice for ReferAI — LangGraph agents, semantic matching, coaching",
     lifespan=lifespan,
 )
 

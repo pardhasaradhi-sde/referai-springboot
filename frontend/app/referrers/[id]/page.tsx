@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Briefcase, MapPin, Calendar, Send, MessageCircle, CheckCircle, Clock } from "lucide-react";
 import { LoadingPage } from "@/components/ui/Loading";
-import type { Profile, ReferralRequest } from "@/lib/api/types";
+import type { Profile, ReferralRequest, PageResponse } from "@/lib/api/types";
 
 export default function ReferrerProfilePage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -22,13 +22,14 @@ export default function ReferrerProfilePage({ params }: { params: Promise<{ id: 
 
     const loadData = async () => {
         try {
-            const [referrerData, requests] = await Promise.all([
+            const [referrerData, requestsPage] = await Promise.all([
                 api.get<Profile>(`/api/referrers/${id}`),
-                api.get<ReferralRequest[]>("/api/requests/outgoing"),
+                api.get<PageResponse<ReferralRequest>>("/api/requests/outgoing"),
             ]);
             setReferrer(referrerData);
 
             // Check if there's an existing active request with this referrer
+            const requests = requestsPage?.content || [];
             const activeRequest = requests.find(
                 (req) => req.referrer.id === id && (req.status === 'pending' || req.status === 'accepted')
             );
@@ -46,7 +47,7 @@ export default function ReferrerProfilePage({ params }: { params: Promise<{ id: 
     return (
         <div className="min-h-screen bg-white">
             {/* Header */}
-            <nav className="border-b border-gray-200 px-12 py-6">
+            <nav className="border-b border-gray-200 px-4 md:px-12 py-4 md:py-6">
                 <Link
                     href="/referrers"
                     className="flex items-center gap-3 text-sm font-bold uppercase tracking-widest hover:text-gray-600"
@@ -56,20 +57,20 @@ export default function ReferrerProfilePage({ params }: { params: Promise<{ id: 
                 </Link>
             </nav>
 
-            <div className="max-w-4xl mx-auto px-12 py-12">
+            <div className="max-w-4xl mx-auto px-4 md:px-12 py-8 md:py-12">
                 {/* Profile Header */}
                 <div className="mb-12">
-                    <div className="flex items-start gap-8 mb-8">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8 mb-8 text-center sm:text-left">
                         <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center font-black text-5xl flex-shrink-0">
                             {referrer.fullName[0]}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 w-full">
                             <h1 className="text-4xl font-black mb-3">{referrer.fullName}</h1>
                             <p className="text-xl text-gray-600 mb-4">
                                 {referrer.jobTitle || "Engineer"}
                             </p>
 
-                            <div className="flex flex-wrap gap-4 text-sm text-gray-500 mb-6">
+                            <div className="flex flex-wrap justify-center sm:justify-start gap-4 text-sm text-gray-500 mb-6">
                                 {referrer.company && (
                                     <div className="flex items-center gap-2">
                                         <Briefcase className="w-4 h-4" />

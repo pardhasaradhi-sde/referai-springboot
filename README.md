@@ -1,699 +1,574 @@
-# ![ReferAI Banner](https://img.shields.io/badge/ReferAI-AI%20Powered%20Referral%20Network-111111?style=for-the-badge)
+# ReferAI — AI-Powered Referral Network
 
-# ReferAI
-
-> Break the hiring wall with AI-powered referral matchmaking.
-
-ReferAI is a full-stack referral networking platform that helps job seekers find internal advocates at target companies, score the best matches with AI, draft personalized outreach, and continue the conversation in real time.
+> 70% of jobs are filled through referrals. Most job seekers apply cold anyway.  
+> ReferAI closes that gap.
 
 ---
 
-## Table of Contents
+## What Is This?
 
-- [Overview](#overview)
-- [Features](#features)
-- [Screenshots / Demo](#screenshots--demo)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Getting Started / Installation](#getting-started--installation)
-- [Environment Variables](#environment-variables)
-- [Usage](#usage)
-- [API Reference](#api-reference)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-- [Author](#author)
-- [Acknowledgements](#acknowledgements)
-- [Support](#support)
+Applying to jobs cold — submitting a resume through a job portal and hoping an ATS doesn't bury it — has one of the lowest conversion rates in the entire hiring process. Candidates who get referred bypass the ATS filter, get a human review instantly, and are 4× more likely to get an interview.
+
+**ReferAI is a platform that makes referrals accessible to anyone, not just people who already have a network.**
+
+Here is what it does:
+
+1. **Understands your resume** — The AI reads your actual experience, not just keywords.
+2. **Finds the right employees** — Semantic vector search matches you against employees at your target company based on real skill overlap, not LinkedIn connections.
+3. **Writes the outreach for you** — A personalized, first-person message built from both your profile and the referrer's background. Referrers can tell the difference between a template and a real person. This isn't a template.
+4. **Coaches you through the conversation** — AI coaching suggestions stream in real-time inside the chat window once a referrer accepts. It reads the conversation history and tells you what to say next.
 
 ---
 
-## Overview
+## Who Is It For?
 
-ReferAI replaces cold ATS submissions with a warmer, higher-signal workflow: understand the role, match the candidate to the right internal employees, generate a thoughtful referral ask, and move accepted requests into real-time chat.
+| User Type | What They Get |
+|---|---|
+| **Job Seekers** | AI-matched referrer discovery, personalized outreach, real-time chat, AI coaching |
+| **Employees (Referrers)** | A clean inbox of qualified candidates they opted in to help |
 
-The project solves a common hiring problem for both sides of the network. Job seekers struggle to reach real people inside companies, while potential referrers need enough context to quickly understand whether they can help. ReferAI bridges that gap with structured profiles, AI-assisted matching, and a referral-specific workflow.
+---
 
-It is built for:
+## Architecture
 
-- Job seekers targeting referrals instead of blind applications
-- Employees who are open to referring strong candidates
-- Developers exploring applied AI in networking, matching, and developer tooling
+ReferAI is a three-tier distributed system. All AI work is isolated in a private Python microservice — the Spring Boot backend never calls external AI APIs directly.
 
-### Why this project?
+```
+┌────────────────────────────────────────────────────────────┐
+│                      User Browser                           │
+│            Next.js 16 Frontend (App Router + SSR)           │
+└────────────────────────┬───────────────────────────────────┘
+                         │  HTTPS + JWT Cookie
+                         ▼
+┌────────────────────────────────────────────────────────────┐
+│               Spring Boot Backend  :8080                    │
+│   REST API · JWT Auth · WebSocket · Redis Cache · Flyway    │
+│   RateLimitingFilter → QuotaService → MatchingService       │
+└──────────┬──────────────────────────┬──────────────────────┘
+           │  JDBC                    │  HTTP + X-Internal-Key
+           ▼                          ▼
+    ┌─────────────┐       ┌──────────────────────────────┐
+    │ PostgreSQL  │       │  FastAPI AI Service  :8010    │
+    │ (pgvector)  │◄──────│  LangGraph · pgvector         │
+    └─────────────┘       │  Groq LLM · Gemini Embeddings │
+           ▲              └──────────────────────────────┘
+           │
+    ┌─────────────┐  ┌─────────────┐  ┌────────────────┐
+    │    Redis    │  │   Appwrite  │  │ Google Gemini  │
+    │  AI Cache   │  │   Storage   │  │  Groq LLM API  │
+    └─────────────┘  └─────────────┘  └────────────────┘
+```
 
-Most hiring tools optimize for applications, not introductions. ReferAI is opinionated around the belief that referrals are a stronger path into companies than generic job portals. Instead of being another resume storage app, it is designed as a referral operating system: profile onboarding, matching intelligence, outreach drafting, request lifecycle management, and real-time follow-up in one product.
+### Key Design Decisions
+
+| Decision | Why |
+|---|---|
+| Separate Python AI Service | Keeps the JVM lean; Python has the most mature AI/ML ecosystem |
+| `X-Internal-Key` middleware | AI service has no public IP — only the backend can reach it |
+| Redis match caching | A 128-bit MD5 hash of the JD+resume caches results for 1hr, avoiding ~$0.005 on identical reruns |
+| pgvector for retrieval | 768-D Gemini embeddings enable O(log n) cosine similarity search over referrer profiles |
+| LangGraph state machines | Matching and coaching logic is expressed as typed, inspectable, resumable graph pipelines |
+| STOMP over SockJS | Industry-standard real-time pub-sub with graceful HTTP fallback |
+| Flyway migrations | Both backend and AI service own versioned SQL migration sets |
+| Rate limiter before JWT | `RateLimitingFilter` fires before token decoding, protecting expensive endpoints early |
 
 ---
 
 ## Features
 
-- Dual-role profiles for seekers, referrers, or users who are both
-- AI-powered matching using resume context, job description context, role similarity, and seniority fit
-- Resume upload with PDF and DOCX extraction through a dedicated Python microservice
-- Job description extraction from job board URLs and generic company career pages
-- AI-generated referral outreach messages personalized to the referrer and job context
-- JWT-based authentication with protected frontend routes
-- Real-time chat using STOMP over SockJS after a referral request is accepted
-- Referral request lifecycle with outgoing, incoming, accept, decline, and connection removal flows
-- In-memory match result caching to reduce repeated Gemini calls
-- Company-aware matching that prioritizes referrers at the target company when available
+### For Job Seekers
+- Upload PDF or DOCX resume — AI extracts skills, seniority, and experience depth
+- Paste a job URL or JD text — AI scrapes and cleans the description
+- Run AI matching — semantic pipeline returns top 5 referrers ranked by real skill overlap, not keywords
+- Generate a personalized referral outreach message in one click
+- Chat with referrers in real-time once they accept your request
+- Get AI coaching suggestions mid-conversation via SSE stream
+- View your full matching history with pipeline telemetry
 
-### What makes it different?
+### For Referrers
+- Opt-in profile indexed into pgvector so seekers can discover you
+- Review incoming requests with AI match scores and seeker context
+- Accept to open a chat; decline or ignore anything that isn't a fit
 
-- It is referral-first, not application-first
-- It combines a typed Spring Boot API with a separate FastAPI AI service instead of burying AI logic directly in the web app
-- It supports both structured extraction and user editability, so AI accelerates the workflow without taking control away from the user
-- It handles the full loop from discovery to outreach to chat
+### Platform Engineering
+- JWT auth with custom Spring Security filter chain
+- Per-user daily AI quotas enforced in Redis before any LLM call is made
+- IP-level sliding-window rate limiting (100 req / 15 min)
+- Async email notifications (login OTP, new request, new message) via SMTP
+- Outcome reporting with a Redis feedback flywheel that adjusts synthesis weights over time
 
+---
 
 ## Tech Stack
 
-| Layer | Technologies | Notes |
-| --- | --- | --- |
-| Frontend | Next.js 16, React 19, TypeScript 5, Tailwind CSS 3, Framer Motion, Zustand, Zod, Lucide React | App Router UI, auth-aware navigation, typed API clients, animated landing pages |
-| Backend | Spring Boot 3.3, Java 21, Spring Security, Spring Data JPA, Spring WebSocket, WebFlux WebClient, JJWT, Flyway, Lombok | REST API, JWT auth, persistence, real-time chat, AI/Appwrite integration |
-| AI Service | FastAPI, Uvicorn, Pydantic, Pydantic Settings, httpx, BeautifulSoup4, lxml, PyPDF2, python-docx, Playwright | Resume extraction, JD scraping, internal API authentication |
-| Database | PostgreSQL | Users, profiles, referral requests, conversations, messages |
-| Cache / Infra | Redis, Appwrite Storage | Redis for AI service infrastructure, Appwrite for resume files |
-| AI / External APIs | Google Gemini API, Appwrite Cloud | Structured extraction, message drafting, cloud file storage |
-| Testing | JUnit 5, Mockito, pytest, frontend smoke checks | Backend unit tests, AI service health tests, frontend wiring checks |
+| Layer | Technology | Notes |
+|---|---|---|
+| Frontend | Next.js 16 | App Router, Turbopack |
+| Frontend | React 19 + TypeScript 5 | |
+| Frontend | Framer Motion | Micro-animations, AnimatePresence |
+| Frontend | `@stomp/stompjs` + `sockjs-client` | Real-time WebSocket chat |
+| Backend | Spring Boot 3.3 / Java 21 | |
+| Backend | Spring Security | Custom JWT filter + WebSocket security |
+| Backend | Spring WebFlux WebClient | Non-blocking HTTP to AI service |
+| Backend | Spring Data Redis / Jedis | Quota + cache |
+| Backend | Flyway | Versioned SQL migrations |
+| AI Service | FastAPI | Python async HTTP framework |
+| AI Service | LangGraph | `StateGraph` agent pipelines |
+| AI Service | Groq | Llama 3.1 70B inference |
+| AI Service | Google Gemini | `text-embedding-004` 768-D embeddings |
+| AI Service | pgvector | PostgreSQL vector similarity extension |
+| AI Service | `pdfplumber` + `python-docx` | Resume text extraction |
+| Database | PostgreSQL 15+ | pgvector extension required |
+| Cache | Redis 7+ | AI results, quota counters, flywheel weights |
+| Storage | Appwrite | Resume file storage (PDF/DOCX) |
 
 ---
 
 ## Project Structure
 
-```text
+```
 referai/
-|-- backend/                               # Spring Boot API, business logic, persistence, WebSocket chat
-|   |-- pom.xml                            # Maven build and Java dependencies
-|   `-- src/
-|       |-- main/
-|       |   |-- java/com/referai/backend/
-|       |   |   |-- BackendApplication.java
-|       |   |   |-- config/                # Security, Appwrite, WebSocket, shared app config
-|       |   |   |-- controller/            # Auth, profile, matching, requests, chat, conversations
-|       |   |   |-- dto/                   # Request/response payloads
-|       |   |   |-- entity/                # JPA entities and enums
-|       |   |   |-- exception/             # Global and external service error handling
-|       |   |   |-- mapper/                # Entity <-> DTO mapping
-|       |   |   |-- repository/            # Spring Data repositories
-|       |   |   |-- security/              # JWT token provider and request filter
-|       |   |   `-- service/               # Core product logic, AI integration, storage integration
-|       |   `-- resources/
-|       |       |-- application.yml        # Spring configuration driven by env vars
-|       |       `-- db/migration/          # Flyway SQL migrations
-|       `-- test/
-|           `-- java/com/referai/backend/service/
-|               |-- MatchingServiceTest.java
-|               `-- ReferralRequestServiceTest.java
-|-- frontend/                              # Next.js application
-|   |-- app/                               # App Router pages and route segments
-|   |   |-- auth/                          # Login and signup
-|   |   |-- dashboard/                     # Match flow and request dashboard
-|   |   |-- messages/                      # Conversation list and chat detail
-|   |   |-- profile/                       # Profile view and setup flow
-|   |   |-- referrers/                     # Referrer browse and detail pages
-|   |   |-- request/                       # Referral request composer
-|   |   |-- globals.css                    # Global theme and utility styles
-|   |   `-- layout.tsx                     # Root layout
-|   |-- components/
-|   |   |-- dashboard/                     # JD input and dashboard-specific UI
-|   |   |-- landing/                       # Marketing page sections
-|   |   |-- profile/                       # Resume upload UI
-|   |   `-- ui/                            # Toasts, loading states, generic UI pieces
-|   |-- lib/
-|   |   |-- ai/                            # Runtime schemas
-|   |   |-- api/                           # Typed API client and shared types
-|   |   |-- utils.ts                       # Helpers like delimited list parsing
-|   |   `-- websocket.ts                   # STOMP client wiring
-|   |-- tests/
-|   |   `-- smoke-check.mjs                # Basic filesystem and route wiring validation
-|   |-- middleware.ts                      # Route protection via cookie presence
-|   |-- next.config.ts
-|   |-- package.json
-|   |-- postcss.config.js
-|   |-- tailwind.config.ts
-|   `-- tsconfig.json
-|-- referai-ai-service/                    # FastAPI microservice for extraction and scraping
-|   |-- app/
-|   |   |-- api/routes/                    # `/health`, `/api/extract-resume`, `/api/scrape-jd`
-|   |   |-- core/                          # Settings and structured logging
-|   |   |-- db/                            # Postgres/Redis bootstrap and migration runner
-|   |   |-- middleware/                    # Internal API key enforcement
-|   |   |-- schemas/                       # Pydantic request/response models
-|   |   `-- services/                      # Resume extraction and job scraping
-|   |-- migrations/sql/                    # AI-service-side SQL migrations and placeholders
-|   |-- tests/
-|   |   `-- test_health.py
-|   |-- pyproject.toml
-|   `-- requirements.txt
-|-- docs/                                  # Design docs, setup guides, testing docs, implementation notes
-|-- .gitignore
-`-- README.md
+├── backend/                                # Spring Boot API
+│   ├── pom.xml
+│   └── src/main/java/com/referai/backend/
+│       ├── config/                         # Security, WebSocket, Redis, Appwrite, Async
+│       ├── controller/                     # Auth, Profile, Matching, Requests, Chat
+│       ├── dto/                            # Request/Response DTOs per endpoint
+│       ├── entity/                         # User, Profile, ReferralRequest, Conversation, Message
+│       ├── exception/                      # GlobalExceptionHandler, QuotaExceededException (429)
+│       ├── repository/                     # Spring Data JPA repos with JPQL join fetches
+│       ├── security/                       # JwtTokenProvider, JwtAuthFilter, RateLimitingFilter
+│       └── service/                        # MatchingService, QuotaService, EmailService...
+│
+├── frontend/                               # Next.js App Router application
+│   ├── app/
+│   │   ├── auth/                           # /login, /signup
+│   │   ├── dashboard/                      # AI matching UI + matching-history subpage
+│   │   ├── dashboard/requests/             # Outgoing/incoming request management
+│   │   ├── messages/                       # Conversation list
+│   │   ├── messages/[id]/                  # Chat view with real-time AI coaching (SSE)
+│   │   ├── profile/                        # Profile view and editing
+│   │   ├── profile/setup/                  # Multi-step onboarding (role → details)
+│   │   ├── referrers/                      # Referrer browse and detail
+│   │   └── request/[id]/                   # Individual referral request view
+│   ├── components/
+│   │   ├── dashboard/                      # JdInput, NotificationBell
+│   │   ├── landing/                        # Footer, HowItWorks, SocialProof,
+│   │   │                                   # MatchmakingWorkflow, NetworkDemo,
+│   │   │                                   # ReferralAsk, FeaturesGrid, Magnetic
+│   │   ├── profile/                        # FileUpload component
+│   │   └── ui/                             # Toast, Loading, generic UI
+│   ├── lib/
+│   │   ├── api/client.ts                   # Unified JWT-bearing fetch wrapper
+│   │   ├── api/types.ts                    # TypeScript types matching backend DTOs
+│   │   └── websocket.ts                    # STOMP client factory
+│   └── proxy.ts                            # Next.js middleware — cookie route protection
+│
+└── referai-ai-service/                     # FastAPI Python microservice
+    ├── app/
+    │   ├── agents/
+    │   │   ├── matching/                   # LangGraph matching state machine (4 nodes)
+    │   │   └── coach/                      # LangGraph coach state machine (4 nodes + SSE)
+    │   ├── api/routes/                     # health, document, matching, outreach, coach, indexing, outcomes
+    │   ├── core/
+    │   │   ├── config.py                   # Pydantic Settings from .env
+    │   │   └── vector.py                   # Cosine similarity math utilities
+    │   ├── middleware/                      # X-Internal-Key enforcement
+    │   ├── schemas/                         # Pydantic request/response models
+    │   └── services/                        # matching, coach, outreach, indexing, embedding, outcome
+    ├── migrations/sql/                      # Versioned SQL migrations (managed separately from backend)
+    └── tests/
+        └── test_api_contracts.py            # HTTP contract tests for all routes
 ```
 
 ---
 
 ## Prerequisites
 
-Use the following versions for a smooth local setup:
+| Requirement | Version |
+|---|---|
+| Node.js | 22.x |
+| Java | 21 |
+| Maven | 3.9+ |
+| Python | 3.11+ |
+| PostgreSQL | 15+ with `pgvector` extension |
+| Redis | 7+ |
 
-- Node.js `22.x` recommended
-- npm `10.x` recommended
-- Java `21`
-- Maven `3.9+`
-- Python `3.9+` (tested in this workspace with Python `3.13`)
-- PostgreSQL `15+`
-- Redis `7+` recommended for the AI service infrastructure
+### Required External Accounts
 
-### Required Accounts / Secrets
-
-- Google Gemini API key
-- Appwrite project with a storage bucket named `referai-resumes`
-
-### OS Compatibility
-
-- Developed and tested on Windows
-- Should work on macOS and Linux with equivalent shell commands
-- PowerShell examples are included where Windows behavior matters
+- **Google Gemini API key** — `text-embedding-004` for vector generation
+- **Groq API key** — Llama 3.1 70B LLM inference
+- **Appwrite project** — storage bucket named `referai-resumes` for resume files
 
 ---
 
-## Getting Started / Installation
+## Getting Started
 
-### 1. Clone the repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/pardhasaradhi-sde/referai-springboot.git
 cd referai-springboot
 ```
 
-### 2. Install dependencies
+### 2. Set up the database
 
-#### Frontend
-
-```bash
-cd frontend
-npm install
-cd ..
+```sql
+CREATE DATABASE referai;
+\c referai
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-#### Backend
+### 3. Install dependencies
 
 ```bash
-cd backend
-mvn clean compile
-cd ..
-```
+# Frontend
+cd frontend && npm install
 
-#### AI Service
+# Backend
+cd backend && mvn clean compile
 
-```bash
+# AI Service (Windows)
 cd referai-ai-service
 python -m venv .venv
-```
-
-**Windows PowerShell**
-
-```powershell
-cd D:\path\to\referai-springboot\referai-ai-service
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -e .
-```
+pip install --upgrade pip && pip install -e .
 
-**macOS / Linux**
-
-```bash
+# AI Service (macOS / Linux)
 cd referai-ai-service
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e .
+python -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip && pip install -e .
 ```
 
-### 3. Configure environment variables
+### 4. Configure environment variables
 
-Use the checked-in example files where available:
+See [Environment Variables](#environment-variables). Create:
 
-- `backend/.env.example`
-- `referai-ai-service/.env.example`
-
-Create these runtime files locally:
-
-- `backend/.env`
-- `referai-ai-service/.env`
 - `frontend/.env.local`
+- `backend/.env` (or set in `application.yml`)
+- `referai-ai-service/.env`
 
-### 4. Run the application
-
-Start the services in this order:
-
-#### Start PostgreSQL and Redis
-
-If you are running them locally, ensure they are available first.
-
-#### Start the AI service
+### 5. Start services in order
 
 ```bash
+# 1. Ensure PostgreSQL and Redis are running
+
+# 2. AI Service
 cd referai-ai-service
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8010
+
+# 3. Spring Boot Backend
+cd backend && mvn spring-boot:run
+
+# 4. Frontend
+cd frontend && npm run dev
 ```
 
-#### Start the backend
-
-```bash
-cd backend
-mvn spring-boot:run
-```
-
-#### Start the frontend
-
-```bash
-cd frontend
-npm run dev
-```
-
-Open the app at [http://localhost:3001](http://localhost:3001).
+Open [http://localhost:3001](http://localhost:3001).
 
 ---
 
 ## Environment Variables
 
-### Example files
+### Frontend (`frontend/.env.local`)
 
-- Backend example: `backend/.env.example`
-- AI service example: `referai-ai-service/.env.example`
-- Frontend uses `.env.local` and does not currently ship with an example file
+| Variable | Required | Example | Description |
+|---|---|---|---|
+| `NEXT_PUBLIC_BACKEND_URL` | Yes | `http://localhost:8080` | Base URL for the Spring Boot API and WebSocket |
 
-### Configuration matrix
+### Backend
 
-| Service | Variable | Required | Example | Description |
-| --- | --- | --- | --- | --- |
-| Frontend | `NEXT_PUBLIC_BACKEND_URL` | Yes | `http://localhost:8080` | Base URL for the Spring Boot API and WebSocket endpoint |
-| Backend | `SPRING_DATASOURCE_URL` | Yes | `jdbc:postgresql://localhost:5432/referai` | PostgreSQL JDBC connection string |
-| Backend | `SPRING_DATASOURCE_USERNAME` | Yes | `postgres` | PostgreSQL username |
-| Backend | `SPRING_DATASOURCE_PASSWORD` | Yes | `your_db_password` | PostgreSQL password |
-| Backend | `APP_JWT_SECRET` | Yes | `replace-with-32-plus-char-secret` | JWT signing secret; must be at least 32 characters |
-| Backend | `APP_JWT_EXPIRATION_MS` | Yes | `86400000` | Access token TTL in milliseconds |
-| Backend | `GEMINI_API_KEY` | Yes | `AIza...` | Google Gemini API key |
-| Backend | `APP_GEMINI_MODEL` | No | `gemini-2.0-flash` | Gemini model override |
-| Backend | `APPWRITE_API_KEY` | Yes | `standard_xxx` | Appwrite API key used for resume uploads |
-| Backend | `PYTHON_SERVICE_URL` | Yes | `http://localhost:8010` | Base URL for the FastAPI AI service |
-| Backend | `PYTHON_INTERNAL_KEY` | Yes | `referai-internal-secret-2026` | Shared internal auth key for backend -> AI service calls |
-| AI Service | `APP_NAME` | No | `referai-ai-service` | Application name for logs and metadata |
-| AI Service | `APP_ENV` | No | `development` | Environment name |
-| AI Service | `APP_HOST` | No | `0.0.0.0` | Host binding |
-| AI Service | `APP_PORT` | No | `8010` | Service port |
-| AI Service | `LOG_LEVEL` | No | `INFO` | Logging level |
-| AI Service | `X_INTERNAL_KEY` | Yes | `referai-internal-secret-2026` | Internal API key accepted by middleware |
-| AI Service | `PYTHON_INTERNAL_KEY` | No | `referai-internal-secret-2026` | Alias for the same internal API key |
-| AI Service | `POSTGRES_URL` | No | `postgresql://postgres:postgres@localhost:5432/referai` | AI-service-side database connection |
-| AI Service | `REDIS_URL` | No | `redis://localhost:6379/0` | Redis connection string |
-| AI Service | `RUN_MIGRATIONS` | No | `false` | Run startup migrations on boot |
-| AI Service | `MIGRATIONS_PATH` | No | `migrations/sql` | Migration directory path |
+| Variable | Required | Example | Description |
+|---|---|---|---|
+| `SPRING_DATASOURCE_URL` | Yes | `jdbc:postgresql://localhost:5432/referai` | PostgreSQL JDBC connection |
+| `SPRING_DATASOURCE_USERNAME` | Yes | `postgres` | PostgreSQL username |
+| `SPRING_DATASOURCE_PASSWORD` | Yes | `your_password` | PostgreSQL password |
+| `APP_JWT_SECRET` | Yes | `32-plus-char-secret` | JWT signing secret |
+| `APP_JWT_EXPIRATION_MS` | Yes | `86400000` | Token TTL in ms (24 hrs) |
+| `APPWRITE_PROJECT_ID` | Yes | `your-project-id` | Appwrite project ID |
+| `APPWRITE_API_KEY` | Yes | `standard_xxx` | Appwrite API key |
+| `PYTHON_SERVICE_URL` | Yes | `http://localhost:8010` | Internal URL of FastAPI AI service |
+| `PYTHON_INTERNAL_KEY` | Yes | `referai-internal-secret-2026` | Shared internal auth key |
+| `REDIS_URL` | Yes | `redis://localhost:6379` | Redis connection URL |
+| `MAIL_ENABLED` | No | `true` | Enable SMTP email notifications (default: false) |
+| `MAIL_SMTP_HOST` | No | `smtp.gmail.com` | SMTP host |
+| `MAIL_SMTP_PORT` | No | `587` | SMTP port |
+| `MAIL_USERNAME` | No | `youremail@gmail.com` | SMTP username |
+| `MAIL_PASSWORD` | No | `app-password` | SMTP password (Google App Password) |
+| `MAIL_FROM_NAME` | No | `ReferAI` | Sender display name in email templates |
+| `APP_PUBLIC_FRONTEND_URL` | No | `http://localhost:3001` | Base URL embedded in notification email links |
 
-### Appwrite bucket requirements
+### AI Service (`referai-ai-service/.env`)
 
-Create a storage bucket with the following settings:
+| Variable | Required | Example | Description |
+|---|---|---|---|
+| `X_INTERNAL_KEY` | Yes | `referai-internal-secret-2026` | Must match `PYTHON_INTERNAL_KEY` in backend |
+| `GEMINI_API_KEY` | Yes | `AIza...` | Google Gemini key for embeddings |
+| `GROQ_API_KEY` | Yes | `gsk_...` | Groq key for LLM inference |
+| `POSTGRES_URL` | Yes | `postgresql://postgres:pass@localhost:5432/referai` | PostgreSQL connection for AI service |
+| `REDIS_URL` | Yes | `redis://localhost:6379/0` | Redis for flywheel weight state |
+| `APP_HOST` | No | `0.0.0.0` | Uvicorn host binding |
+| `APP_PORT` | No | `8010` | Service port |
+| `LOG_LEVEL` | No | `INFO` | Log verbosity |
+| `RUN_MIGRATIONS` | No | `false` | Run SQL migrations on startup |
 
-- Bucket ID: `referai-resumes`
-- Size limit: `5MB`
-- Allowed extensions: `pdf`, `docx`
-- Read / Create / Update / Delete permissions for authenticated users
+### Appwrite Bucket Setup
 
----
-
-## Usage
-
-### Development mode
-
-Run the three services locally:
-
-```bash
-# Terminal 1
-cd referai-ai-service
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8010
-```
-
-```bash
-# Terminal 2
-cd backend
-mvn spring-boot:run
-```
-
-```bash
-# Terminal 3
-cd frontend
-npm run dev
-```
-
-### Production mode
-
-#### Frontend
-
-```bash
-cd frontend
-npm run build
-npm run start
-```
-
-#### Backend
-
-```bash
-cd backend
-mvn clean package -DskipTests
-java -jar target/backend-0.0.1-SNAPSHOT.jar
-```
-
-#### AI Service
-
-```bash
-cd referai-ai-service
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8010
-```
-
-### Typical user workflow
-
-1. Register or log in
-2. Complete profile setup
-3. Upload a resume and review extracted text
-4. Paste a job description or job URL into the dashboard
-5. Run AI matching
-6. Review suggested referrers
-7. Generate and send a referral request
-8. Accept the request from the other side and continue in chat
-
-### Example API calls
-
-#### Register
-
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "alice@example.com",
-    "password": "StrongPassword123!",
-    "fullName": "Alice Doe"
-  }'
-```
-
-#### Login
-
-```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "alice@example.com",
-    "password": "StrongPassword123!"
-  }'
-```
-
-#### Extract a job description from a URL
-
-```bash
-curl -X POST http://localhost:8080/api/matching/extract-jd \
-  -H "Authorization: Bearer <JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": "https://careers.example.com/jobs/software-engineer"
-  }'
-```
-
-#### Run AI matching
-
-```bash
-curl -X POST http://localhost:8080/api/matching/analyze \
-  -H "Authorization: Bearer <JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jobDescription": "Senior Backend Engineer role working on Java, Spring Boot, PostgreSQL, and distributed systems.",
-    "resumeText": "Experienced backend engineer with Java, Spring Boot, PostgreSQL, and event-driven systems.",
-    "targetCompany": "Acme"
-  }'
-```
-
-### Matching behavior
-
-The backend currently scores matches using:
-
-- `65%` skill overlap
-- `20%` role similarity
-- `15%` seniority alignment
-
-It returns the top `5` referrers and caches repeated resume + JD analyses in memory to reduce duplicate Gemini calls.
+Create a bucket with:
+- **Bucket ID**: `referai-resumes`
+- **Size limit**: 5 MB
+- **Allowed extensions**: `pdf`, `docx`
+- **Permissions**: CRUD for authenticated users
 
 ---
 
 ## API Reference
 
-**Base URL:** `http://localhost:8080`  
-**Auth:** `Authorization: Bearer <JWT>` on protected REST endpoints  
+**Backend base URL:** `http://localhost:8080`  
+**Auth:** `Authorization: Bearer <JWT>` on all protected endpoints  
 **WebSocket:** SockJS/STOMP at `ws://localhost:8080/ws`
 
 ### Authentication
 
-| Method | Endpoint | Auth | Description | Request Body | Response |
-| --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | Public | Register a new user | `{ email, password, fullName }` | `AuthResponse` with token and profile |
-| `POST` | `/api/auth/login` | Public | Authenticate an existing user | `{ email, password }` | `AuthResponse` with token and profile |
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Register with email + password |
+| `POST` | `/api/auth/login` | Public | Login — returns JWT |
 
-### Profiles and discovery
+### Profiles
 
-| Method | Endpoint | Auth | Description | Request Body | Response |
-| --- | --- | --- | --- | --- | --- |
-| `GET` | `/api/profiles/me` | Yes | Fetch the current user's profile | None | `ProfileDto` |
-| `PUT` | `/api/profiles/me` | Yes | Create or update role-specific profile fields | `UpdateProfileRequest` | `ProfileDto` |
-| `POST` | `/api/profiles/upload-resume` | Yes | Upload a PDF or DOCX resume | `multipart/form-data` with `file` | `UploadResumeResponse` |
-| `GET` | `/api/referrers` | Yes | List active referrers, optionally filtered | Query params: `company`, `search` | `ProfileDto[]` |
-| `GET` | `/api/referrers/{id}` | Yes | Fetch one referrer profile | None | `ProfileDto` |
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/profiles/me` | Current user profile |
+| `PUT` | `/api/profiles/me` | Update profile fields |
+| `POST` | `/api/profiles/upload-resume` | Upload PDF/DOCX to Appwrite |
+| `GET` | `/api/referrers` | Browse referrers (filter: `company`, `search`) |
+| `GET` | `/api/referrers/{id}` | Specific referrer profile |
 
-### Matching and AI
+### Matching & AI — _Quota-Protected_
 
-| Method | Endpoint | Auth | Description | Request Body | Response |
-| --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/matching/analyze` | Yes | Extract structured job and profile data, then rank referrers | `{ jobDescription, resumeText, targetCompany? }` | `AnalyzeResponse` |
-| `POST` | `/api/matching/generate-message` | Yes | Generate an outreach draft | `GenerateMessageRequest` | `{ message }` |
-| `POST` | `/api/matching/extract-jd` | Yes | Extract a JD from a URL or return plain text as-is | `{ input }` | `ExtractJdResponse` |
+| Method | Endpoint | Daily Limit | Description |
+|---|---|---|---|
+| `POST` | `/api/matching/analyze` | 5 / user | Full 4-step LangGraph matching pipeline |
+| `POST` | `/api/matching/extract-jd` | 20 / user | Extract JD from URL or plain text |
+| `POST` | `/api/matching/generate-message` | — | AI-drafted outreach message |
+| `GET` | `/api/matching/history` | — | Past matching run telemetry |
+| `POST` | `/api/matching/coach-suggest` | 20 / user | Stream AI coaching via SSE |
 
-### Referral requests
+### Referral Requests
 
-| Method | Endpoint | Auth | Description | Request Body | Response |
-| --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/requests` | Yes | Send a referral request | `SendReferralRequestDto` | `ReferralRequestDto` |
-| `GET` | `/api/requests/outgoing` | Yes | List requests created by the current user | None | `ReferralRequestDto[]` |
-| `GET` | `/api/requests/incoming` | Yes | List requests received by the current user | None | `ReferralRequestDto[]` |
-| `POST` | `/api/requests/{id}/accept` | Yes | Accept a request and create or reuse a conversation | None | `ConversationDto` |
-| `POST` | `/api/requests/{id}/decline` | Yes | Decline a request | None | `{ success: true }` |
-| `DELETE` | `/api/requests/{id}/connection` | Yes | Remove an accepted connection | None | `{ success: true }` |
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/requests` | Send a referral request |
+| `GET` | `/api/requests/outgoing` | Requests you sent |
+| `GET` | `/api/requests/incoming` | Requests received |
+| `POST` | `/api/requests/{id}/accept` | Accept → creates conversation |
+| `POST` | `/api/requests/{id}/decline` | Decline |
+| `DELETE` | `/api/requests/{id}/connection` | Remove accepted connection |
+| `POST` | `/api/requests/{id}/outcome` | Report outcome (referral / interview / offer) |
 
-### Conversations and chat
+### Chat
 
-| Method | Endpoint | Auth | Description | Request Body | Response |
-| --- | --- | --- | --- | --- | --- |
-| `GET` | `/api/conversations` | Yes | List the current user's conversations | None | `ConversationDto[]` |
-| `GET` | `/api/conversations/{id}` | Yes | Fetch a single conversation | None | `ConversationDto` |
-| `GET` | `/api/conversations/{id}/messages` | Yes | Fetch message history | None | `MessageDto[]` |
-| `POST` | `/api/conversations/{id}/messages` | Yes | Send a message over HTTP | `{ content }` | `MessageDto` |
-| `WS` | `/ws` | Yes | Real-time STOMP endpoint | STOMP connect + JWT header | Subscriptions on `/topic/conversations/{id}` |
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/conversations` | All conversations |
+| `GET` | `/api/conversations/{id}/messages` | Message history |
+| `POST` | `/api/conversations/{id}/messages` | Send message via HTTP |
+| `WS` | `/ws` | STOMP — subscribe to `/topic/conversations/{id}` |
 
-### Internal AI service endpoints
+### Internal AI Service Routes
 
-These are called by the backend and are protected by the shared internal key.
+Protected by `X-Internal-Key`. Never exposed publicly.
 
-| Method | Endpoint | Auth | Description | Request Body | Response |
-| --- | --- | --- | --- | --- | --- |
-| `GET` | `/health` | Internal middleware applied, but health remains callable in tests | Service health and dependency status | None | Health JSON |
-| `POST` | `/api/extract-resume` | Internal key | Extract text from PDF or DOCX | `{ fileContent, fileName }` | `ExtractResumeResponse` |
-| `POST` | `/api/scrape-jd` | Internal key | Scrape job description data from URLs | `{ url }` | `ScrapeJobResponse` |
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/health` | Checks Postgres, Redis, Groq, Gemini |
+| `POST` | `/api/extract-resume` | Extracts text from PDF/DOCX |
+| `POST` | `/api/scrape-jd` | Scrapes and cleans JD HTML |
+| `POST` | `/api/match` | 4-step LangGraph matching pipeline |
+| `POST` | `/api/generate-outreach` | Personalized first message via RAG |
+| `POST` | `/api/coach/suggest` | SSE coaching stream |
+| `POST` | `/api/index-referrer` | Embeds referrer into pgvector |
+| `POST` | `/api/outcomes/record` | Records outcome for flywheel |
+
+---
+
+## AI Pipeline Deep Dive
+
+### Matching (`/api/match`)
+
+A 4-node LangGraph pipeline — each node has a distinct job:
+
+```
+document_intelligence → semantic_retrieval → llm_reranking → synthesis
+```
+
+| Node | Work | Est. Cost |
+|---|---|---|
+| `document_intelligence` | LLM extracts target company, must-have skills, seeker strengths and gaps from resume + JD | ~$0.0015 |
+| `semantic_retrieval` | Embeds seeker profile to 768-D vector → pgvector cosine search → top 20 candidates at target company | ~$0.00001 |
+| `llm_reranking` | Two-pass LLM: (1) deep evaluation of all candidates, (2) comparative re-ranking to final top 5 | ~$0.0037 |
+| `synthesis` | Combines LLM score (45%), semantic score (10%), company tier (25%), Redis flywheel weights (20%) | $0 |
+
+> **~$0.005 per run** — this is why a 5-match/day quota exists.
+
+### AI Coach (`/api/coach/suggest`)
+
+Streaming SSE pipeline inside the chat window:
+
+```
+load_context → rag_retrieval → analyze_situation → generate_suggestion
+```
+
+Reads the last 20 messages and both profiles, classifies the coaching stage, then streams a specific suggestion for what to say next.
+
+> **~$0.0012 per suggestion**
+
+### Outreach Drafter (`/api/generate-outreach`)
+
+RAG-based message generation using both profiles:
+
+1. Fetches seeker + referrer profiles and historical feedback from Redis
+2. Runs cosine similarity over both profiles to find the 4 strongest shared talking points
+3. Prompts LLM — hard rules: under 200 words, first-person, zero AI buzzwords
+4. Self-correction guard: if third-person self-reference is detected, one more LLM pass to fix it
+
+> **~$0.001 per message** (up to $0.002 if self-correction triggers)
+
+---
+
+## Rate Limiting & Quotas
+
+### IP-Level Rate Limiter
+
+`RateLimitingFilter` runs before the JWT filter chain — **100 requests / 15 minutes** per IP. Returns `429 Too Many Requests` with a `Retry-After` header.
+
+### Per-User AI Quotas
+
+Tracked in Redis with `INCR` and 48-hour TTL:
+
+| Feature | Daily Limit |
+|---|---|
+| AI Matching | 5 runs |
+| JD Extraction | 20 requests |
+| AI Coach | 20 suggestions |
+
+Quota is checked **before** the AI call and incremented **after** success only. Cached or failed responses never consume quota.
+
+---
+
+## Usage Flows
+
+### Job Seeker
+
+1. Register → complete onboarding → upload resume
+2. On `/dashboard`, paste a job URL or JD text
+3. Run AI matching — review top-ranked referrers with score explanations
+4. Visit a referrer's profile → generate a personalized outreach message
+5. Send the referral request
+6. Once accepted, continue in chat → use AI coach for real-time suggestions
+7. Report the outcome (helps the model improve over time)
+
+### Referrer
+
+1. Register → complete referrer profile (company, skills, seniority)
+2. Profile is auto-indexed into pgvector
+3. Review incoming requests on `/dashboard/requests`
+4. Accept → opens a conversation; decline anything that isn't a fit
+5. Chat with the seeker, refer if the fit is strong
 
 ---
 
 ## Testing
 
-[![Coverage](https://img.shields.io/badge/coverage-placeholder-lightgrey)](https://github.com/pardhasaradhi-sde/referai-springboot)
-
-### Run tests
-
-#### Backend
+### Backend
 
 ```bash
 cd backend
 mvn test
 ```
 
-#### Frontend
-
-```bash
-cd frontend
-npm run test:smoke
-```
-
-#### AI Service
+### AI Service
 
 ```bash
 cd referai-ai-service
-pytest
+.venv\Scripts\python.exe -m pytest   # Windows
+python -m pytest                     # macOS/Linux
 ```
 
-### Test types included
+### Frontend
 
-- Unit tests for backend service logic
-- Frontend smoke checks for route and API wiring
-- FastAPI health endpoint tests
+```bash
+cd frontend
+npm run lint
+npm run build
+```
 
-### Recommended manual test pass
+### Manual Verification Checklist
 
-- Register as a seeker
-- Complete profile setup and upload a resume
-- Confirm Appwrite upload succeeds and extracted text is editable
-- Paste both a job board URL and a generic company career page URL
-- Run AI matching and verify ranked referrers appear
-- Generate and send a referral request
-- Accept the request from the receiver side
-- Open the conversation and test both HTTP and WebSocket chat flows
+- [ ] Register as seeker, complete onboarding and upload a PDF resume
+- [ ] Paste a job board URL and a plain JD — verify both extract correctly
+- [ ] Run AI matching — verify ranked referrers appear with reasoning
+- [ ] Generate an outreach message — verify it reads as first-person and natural
+- [ ] Send a referral request; accept from the referrer side
+- [ ] Confirm conversation opens and STOMP chat works in real time
+- [ ] Click the AI coach button — verify SSE streaming suggestions appear
+- [ ] Exceed the daily quota limit — verify 429 is returned cleanly
 
 ---
 
 ## Deployment
 
-ReferAI is structured as a multi-service deployment:
+| Service | Recommended Platform |
+|---|---|
+| **Frontend** | Vercel (native Next.js support) |
+| **Spring Boot Backend** | DigitalOcean App Platform / Droplet |
+| **FastAPI AI Service** | Same host as backend (private network) |
+| **PostgreSQL** | Managed: DO Managed DB, Supabase, or Neon |
+| **Redis** | Managed: Upstash or Redis Cloud |
+| **Appwrite** | Appwrite Cloud |
 
-- Frontend: Next.js app
-- Backend: Spring Boot API
-- AI Service: FastAPI microservice
-- Managed services: PostgreSQL, Redis, Appwrite, Gemini API
+> The backend makes synchronous calls to the AI service on every matching request. Keep them co-located to avoid cross-cloud latency and egress costs. The AI service should never have a public IP.
 
-### Supported deployment approach
-
-- Frontend on Vercel
-- Backend on Railway, Render, Fly.io, or an EC2 / VM environment
-- AI service on Railway, Render, Fly.io, or a container-friendly Python host
-- PostgreSQL on Neon, Supabase, Railway, Render, or self-managed Postgres
-- Redis on Upstash, Railway, Redis Cloud, or self-managed Redis
-
-### Deployment steps
-
-1. Provision PostgreSQL and Redis
-2. Create the Appwrite bucket `referai-resumes`
-3. Deploy the FastAPI AI service and set its internal key
-4. Deploy the Spring Boot backend and point it to PostgreSQL, Gemini, Appwrite, and the AI service
-5. Deploy the Next.js frontend and set `NEXT_PUBLIC_BACKEND_URL`
-6. Verify CORS, WebSocket connectivity, and auth flows
-
-### Backend deployment
+### Production Build Commands
 
 ```bash
-cd backend
-mvn clean package -DskipTests
+# Frontend
+cd frontend && npm run build && npm run start
+
+# Backend
+cd backend && mvn clean package -DskipTests
 java -jar target/backend-0.0.1-SNAPSHOT.jar
-```
 
-### Frontend deployment
-
-```bash
-cd frontend
-npm run build
-npm run start
-```
-
-### AI service deployment
-
-```bash
+# AI Service
 cd referai-ai-service
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8010
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 2
 ```
 
-### Docker / docker-compose
+### Deployment Checklist
 
-Dockerfiles and `docker-compose.yml` are not currently part of this repository. If containerized local development is important for your workflow, add it as part of the roadmap below.
-
----
-
-## Roadmap
-
-- [x] JWT authentication and protected frontend routes
-- [x] Dual-role profile setup for seekers and referrers
-- [x] AI-powered referral matching
-- [x] Real-time chat after request acceptance
-- [x] Resume file upload with PDF and DOCX extraction
-- [x] Job description scraping from job boards and generic career pages
-- [x] Appwrite-based resume storage
-- [x] Skill-chip input flow in profile setup
-- [ ] Redis-backed matching cache in the Java backend
-- [ ] Better observability, metrics, and tracing
-- [ ] Playwright-first scraping for harder anti-bot sites
-- [ ] Dockerized local development
-- [ ] Admin moderation and abuse controls
-- [ ] Agentic AI coaching and workflow pipeline
-
----
-
-## Contributing
-
-Contributions are welcome. If you want to improve the product, fix bugs, or build the next layer of the AI pipeline, use the following flow:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with tests where possible
-4. Commit with clear, focused messages
-5. Open a pull request with context, screenshots, and test notes
-
-### Suggested workflow
-
-```bash
-git checkout -b feature/your-feature-name
-git commit -m "feat: add your feature"
-git push origin feature/your-feature-name
-```
-
-### Code style guidelines
-
-- Keep frontend code typed and component-focused
-- Prefer small, testable backend services with explicit DTOs
-- Keep AI-service endpoints narrow and predictable
-- Preserve existing naming conventions and folder organization
-- Add or update docs when behavior changes
-
-**Contribution guide:** [`CONTRIBUTING.md`](./CONTRIBUTING.md) placeholder
-
----
-
-## License
-
-This repository does not currently include an open-source license file. Until a `LICENSE` file is added, treat the code as all rights reserved by default.
-
-If you plan to make the repository public for reuse, add a `LICENSE` file and update the badge at the top of this README.
+- [ ] PostgreSQL provisioned with `pgvector` extension enabled
+- [ ] Redis provisioned and URL configured
+- [ ] Appwrite bucket `referai-resumes` created
+- [ ] `X_INTERNAL_KEY` / `PYTHON_INTERNAL_KEY` match across services
+- [ ] `NEXT_PUBLIC_BACKEND_URL` points to the deployed Spring Boot URL
+- [ ] CORS origins updated in Spring Boot `SecurityConfig`
+- [ ] WebSocket path accessible (check load balancer headers)
+- [ ] Flyway migrations run on first backend startup
+- [ ] AI service `RUN_MIGRATIONS=true` on first deploy, then back to `false`
+- [ ] `MAIL_ENABLED=true` and SMTP credentials set if email notifications are needed
 
 ---
 
 ## Author
 
-**Pardha Saradhi**
+**Pardha Saradhi** — Built this because I got tired of applying cold and getting ignored by ATS.
 
 - GitHub: [pardhasaradhi-sde](https://github.com/pardhasaradhi-sde)
 - LinkedIn: [linkedin.com/in/pardha-saradhi18](https://www.linkedin.com/in/pardha-saradhi18/)
-- Portfolio: [pardhu.me](https://pardhu.me)
-- Twitter / X: Add your public handle here when ready
+- Twitter / X: [@\_\_pardhu](https://x.com/__pardhu)
 
 ---
 
-## Acknowledgements
-
-- [Next.js](https://nextjs.org/) for the frontend framework
-- [Spring Boot](https://spring.io/projects/spring-boot) for the backend foundation
-- [FastAPI](https://fastapi.tiangolo.com/) for the Python AI service
-- [Google Gemini](https://ai.google.dev/) for structured extraction and message generation
-- [Appwrite](https://appwrite.io/) for developer-friendly cloud storage
-- [PostgreSQL](https://www.postgresql.org/) and [Redis](https://redis.io/) for data and infrastructure
-- The open-source tooling ecosystem that makes rapid product prototyping possible
-
----
-
-## Support
-
-If you found this helpful, please give the repository a star. It helps the project get discovered and makes future improvements easier to share.
+If this was useful, consider starring the repo ⭐

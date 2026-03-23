@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 const requiredPaths = [
+  "proxy.ts",
   "app/auth/signup/page.tsx",
   "app/profile/setup/page.tsx",
   "app/dashboard/page.tsx",
@@ -13,6 +14,11 @@ for (const relativePath of requiredPaths) {
   if (!fs.existsSync(new URL(`../${relativePath}`, import.meta.url))) {
     throw new Error(`Missing required file: ${relativePath}`);
   }
+}
+
+const proxySrc = fs.readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
+if (!/export function proxy\(/.test(proxySrc)) {
+  throw new Error("proxy.ts must export function proxy (Next.js 16 network boundary)");
 }
 
 const requestPage = fs.readFileSync(new URL("../app/request/[id]/page.tsx", import.meta.url), "utf8");

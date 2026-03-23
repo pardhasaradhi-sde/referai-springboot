@@ -7,6 +7,7 @@ import com.referai.backend.entity.Conversation;
 import com.referai.backend.entity.Profile;
 import com.referai.backend.entity.ReferralRequest;
 import com.referai.backend.entity.RequestStatus;
+import com.referai.backend.exception.ResourceNotFoundException;
 import com.referai.backend.mapper.EntityMapper;
 import com.referai.backend.repository.ConversationRepository;
 import com.referai.backend.repository.MessageRepository;
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -44,6 +46,10 @@ class ReferralRequestServiceTest {
     private MessageRepository messageRepository;
     @Mock
     private EntityMapper mapper;
+    @Mock
+    private SimpMessagingTemplate messagingTemplate;
+    @Mock
+    private EmailService emailService;
 
     @InjectMocks
     private ReferralRequestService service;
@@ -83,6 +89,8 @@ class ReferralRequestServiceTest {
 
         assertEquals(existing.getId(), actual.id());
         verify(requestRepository, never()).save(any(ReferralRequest.class));
+        verify(emailService, never()).sendReferralRequestNotificationAsync(
+                any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -136,5 +144,43 @@ class ReferralRequestServiceTest {
 
         assertEquals(existing.getId(), actual.id());
         verify(conversationRepository, never()).save(any(Conversation.class));
+    }
+
+    @Test
+    void assertUserMayReportOutcomeThrowsWhenRequestMissing() {
+        UUID requestId = UUID.randomUUID();
+        when(requestRepository.findById(requestId)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class,
+                () -> service.assertUserMayReportOutcome(requestId, UUID.randomUUID()));
+    }
+
+    @Test
+    void assertUserMayReportOutcomeAllowsSeekerAndReferrer() {
+        UUID requestId = UUID.randomUUID();
+        UUID seekerId = UUID.randomUUID();
+        UUID referrerId = UUID.randomUUID();
+        ReferralRequest request = ReferralRequest.builder()
+                .id(requestId)
+                .seeker(Profile.builder().id(seekerId).build())
+                .referrer(Profile.builder().id(referrerId).build())
+                .build();
+        when(requestRepository.findById(requestId)).thenReturn(Optional.of(request));
+
+        service.assertUserMayReportOutcome(requestId, seekerId);
+        service.assertUserMayReportOutcome(requestId, referrerId);
+    }
+
+    @Test
+    void assertUserMayReportOutcomeRejectsNonParticipant() {
+        UUID requestId = UUID.randomUUID();
+        UUID strangerId = UUID.randomUUID();
+        ReferralRequest request = ReferralRequest.builder()
+                .id(requestId)
+                .seeker(Profile.builder().id(UUID.randomUUID()).build())
+                .referrer(Profile.builder().id(UUID.randomUUID()).build())
+                .build();
+        when(requestRepository.findById(requestId)).thenReturn(Optional.of(request));
+
+        assertThrows(SecurityException.class, () -> service.assertUserMayReportOutcome(requestId, strangerId));
     }
 }

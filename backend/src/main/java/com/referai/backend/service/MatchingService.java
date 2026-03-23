@@ -1,208 +1,152 @@
 package com.referai.backend.service;
 
-import com.referai.backend.dto.AnalyzeResponse;
-import com.referai.backend.dto.JobDataDto;
-import com.referai.backend.dto.MatchResultDto;
-import com.referai.backend.dto.ProfileDataDto;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.referai.backend.dto.*;
 import com.referai.backend.entity.Profile;
 import com.referai.backend.mapper.EntityMapper;
 import com.referai.backend.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.DigestUtils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import java.nio.charset.StandardCharsets;
 
+import java.time.Duration;
+import java.util.*;
+
+/**
+ * MatchingService — pure proxy to Python AI service with Redis caching.
+ * No local AI logic. All intelligence lives in referai-ai-service.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class MatchingService {
 
-    private static final double SKILL_WEIGHT = 0.65;
-    private static final double ROLE_WEIGHT = 0.20;
-    private static final double SENIORITY_WEIGHT = 0.15;
+    private static final String CACHE_PREFIX = "referai:match:";
+    private static final Duration CACHE_TTL = Duration.ofHours(1);
 
+    private final PythonAiService pythonAiService;
     private final ProfileRepository profileRepository;
-    private final GeminiService geminiService;
     private final EntityMapper mapper;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
+    private final QuotaService quotaService;
 
-    // In-memory cache: hash(resume+job) -> result
-    private final Map<String, AnalyzeResponse> cache = new LinkedHashMap<>(100, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, AnalyzeResponse> eldest) {
-            return size() > 100;
+    /**
+     * Calls the Python AI pipeline to match candidates.
+     * Results are cached in Redis for 1 hour.
+     */
+    public AnalyzeResponse analyzeAndMatch(UUID seekerId, String jobDescription, String resumeText, String targetCompany) {
+        String hashInput = resumeText + jobDescription + targetCompany;
+        String cacheKey = CACHE_PREFIX + DigestUtils.md5DigestAsHex(hashInput.getBytes(StandardCharsets.UTF_8));
+
+        // Check Redis cache
+        try {
+            String cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached != null) {
+                log.debug("[Matching] Redis cache hit for key={}", cacheKey);
+                return objectMapper.readValue(cached, AnalyzeResponse.class);
+            }
+        } catch (Exception e) {
+            log.warn("Redis read failed: {}", e.getMessage());
         }
-    };
 
-    public AnalyzeResponse analyzeAndMatch(UUID seekerId, String jobDescription, String resumeText) {
-        String cacheKey = Integer.toHexString((resumeText + jobDescription).hashCode());
-        if (cache.containsKey(cacheKey)) {
-            log.debug("[Matching] Cache hit for key={}", cacheKey);
-            return cache.get(cacheKey);
+        // Check Daily Quota (after cache miss)
+        quotaService.checkAndEnforceQuota(seekerId, "match", 2);
+
+        // Call Python AI service
+        Map<String, Object> aiResult = pythonAiService.matchCandidates(
+                jobDescription, resumeText, seekerId.toString(), targetCompany);
+
+        AnalyzeResponse result = parseAiResult(aiResult);
+
+        // Cache in Redis and increment quota
+        try {
+            redisTemplate.opsForValue().set(cacheKey, objectMapper.writeValueAsString(result), CACHE_TTL);
+            quotaService.incrementQuota(seekerId, "match");
+        } catch (Exception e) {
+            log.warn("Redis write failed: {}", e.getMessage());
         }
 
-        JobDataDto jobData = geminiService.extractJobData(jobDescription);
-        ProfileDataDto profileData = geminiService.extractProfileData(resumeText);
-
-        List<Profile> referrers = jobData.company() != null
-                ? profileRepository.findActiveReferrersByCompany(jobData.company(), seekerId)
-                : profileRepository.findActiveReferrers(seekerId);
-
-        List<MatchResultDto> matches = matchProfiles(profileData, jobData, referrers);
-
-        AnalyzeResponse result = new AnalyzeResponse(jobData, profileData, matches);
-        cache.put(cacheKey, result);
         return result;
     }
 
-    public String generateOutreachMessage(
-            String seekerName,
-            String referrerName,
-            String referrerCompany,
-            String jobContext,
-            List<String> sharedSkills
-    ) {
-        return geminiService.generateOutreachMessage(seekerName, referrerName, referrerCompany, jobContext, sharedSkills);
+    public Map<String, Object> getMatchingHistory(UUID seekerId, int limit) {
+        int boundedLimit = Math.max(1, Math.min(limit, 50));
+        return pythonAiService.fetchMatchingHistory(seekerId.toString(), boundedLimit);
     }
 
-    private List<MatchResultDto> matchProfiles(ProfileDataDto seekerProfile, JobDataDto jobData, List<Profile> referrers) {
-        List<String> seekerSkills = seekerProfile != null && seekerProfile.skills() != null
-                ? seekerProfile.skills()
-                : List.of();
+    /**
+     * Parses the raw JSON from the Python AI pipeline into a typed AnalyzeResponse.
+     */
+    private AnalyzeResponse parseAiResult(Map<String, Object> aiResult) {
+        try {
+            String rawJson = objectMapper.writeValueAsString(aiResult);
+            JsonNode root = objectMapper.readTree(rawJson);
 
-        String seekerSeniority = seekerProfile != null ? seekerProfile.seniority() : null;
-        String targetRole = jobData != null ? jobData.title() : null;
+            JsonNode matchesNode = root.has("matches") ? root.get("matches") : root.get("candidates");
 
-        List<String> normalizedSeeker = seekerSkills.stream()
-                .map(this::normalize)
-                .filter(s -> !s.isBlank())
-                .toList();
+            List<MatchResultDto> matches = new ArrayList<>();
 
-        List<MatchResultDto> results = new ArrayList<>();
+            if (matchesNode != null && matchesNode.isArray()) {
+                for (JsonNode matchNode : matchesNode) {
+                    String candidateId = textField(matchNode, "candidateId", "candidate_id", "id");
+                    if (candidateId == null) continue;
 
-        for (Profile ref : referrers) {
-            List<String> refSkills = ref.getSkills() != null ? ref.getSkills() : List.of();
-            if (refSkills.isEmpty()) {
-                continue;
+                    try {
+                        Profile profile = profileRepository.findById(UUID.fromString(candidateId)).orElse(null);
+                        if (profile == null) continue;
+
+                        // Normalize score to 0-1 (Python may return 0-10 or 0-100)
+                        double rawScore = matchNode.has("score") ? matchNode.get("score").asDouble() : 0;
+                        double score;
+                        if (rawScore > 1 && rawScore <= 10) score = rawScore / 10.0;
+                        else if (rawScore > 10) score = rawScore / 100.0;
+                        else score = rawScore;
+                        score = Math.min(Math.max(score, 0.0), 1.0);
+
+                        List<String> sharedSkills = jsonArray(matchNode, "sharedSkills", "shared_skills", "strongPoints", "strong_points");
+                        String explanation = textField(matchNode, "reasoning", "explanation", "suggestedOpening", "suggested_opening");
+
+                        matches.add(new MatchResultDto(
+                                mapper.toProfileDto(profile), score, sharedSkills,
+                                explanation != null ? explanation : "AI-matched referrer",
+                                null
+                        ));
+                    } catch (Exception e) {
+                        log.warn("Failed to parse match candidate {}: {}", candidateId, e.getMessage());
+                    }
+                }
             }
 
-            List<String> normalizedRef = refSkills.stream()
-                    .map(this::normalize)
-                    .filter(s -> !s.isBlank())
-                    .toList();
+            matches.sort(Comparator.comparingDouble(MatchResultDto::score).reversed());
+            return new AnalyzeResponse(matches);
 
-            List<String> shared = normalizedSeeker.stream()
-                    .filter(normalizedRef::contains)
-                    .distinct()
-                    .collect(Collectors.toList());
-
-            double skillOverlap = (double) shared.size() / Math.max(normalizedRef.size(), 1);
-            double roleSimilarity = computeRoleSimilarity(targetRole, ref.getJobTitle());
-            double seniorityMatch = computeSeniorityMatch(seekerSeniority, ref.getSeniority());
-
-            double score = (skillOverlap * SKILL_WEIGHT)
-                    + (roleSimilarity * ROLE_WEIGHT)
-                    + (seniorityMatch * SENIORITY_WEIGHT);
-            score = Math.min(Math.max(score, 0.0), 1.0);
-
-            String explanation = shared.isEmpty()
-                    ? "Works at " + ref.getCompany()
-                    : "Shared skills: " + String.join(", ", shared);
-
-            // Restore original casing for display.
-            List<String> displayShared = refSkills.stream()
-                    .filter(s -> normalizedSeeker.contains(normalize(s)))
-                    .toList();
-
-            results.add(new MatchResultDto(
-                    mapper.toProfileDto(ref),
-                    score,
-                    displayShared,
-                    explanation,
-                    new MatchResultDto.BreakdownDto(skillOverlap, roleSimilarity, seniorityMatch)
-            ));
+        } catch (Exception e) {
+            log.error("Failed to parse AI result: {}", e.getMessage());
+            return new AnalyzeResponse(List.of());
         }
-
-        return results.stream()
-                .sorted(Comparator.comparingDouble(MatchResultDto::score).reversed())
-                .limit(5)
-                .toList();
     }
 
-    private double computeRoleSimilarity(String targetRole, String referrerRole) {
-        if (targetRole == null || targetRole.isBlank() || referrerRole == null || referrerRole.isBlank()) {
-            return 0.5;
+    private String textField(JsonNode node, String... keys) {
+        for (String key : keys) {
+            if (node.has(key) && !node.get(key).isNull()) return node.get(key).asText();
         }
-
-        List<String> targetTokens = tokenize(targetRole);
-        List<String> refTokens = tokenize(referrerRole);
-
-        if (targetTokens.isEmpty() || refTokens.isEmpty()) {
-            return 0.5;
-        }
-
-        long overlap = targetTokens.stream().filter(refTokens::contains).distinct().count();
-        long union = targetTokens.stream().distinct().count() + refTokens.stream().distinct().count() - overlap;
-        if (union <= 0) {
-            return 0.5;
-        }
-
-        return (double) overlap / union;
+        return null;
     }
 
-    private double computeSeniorityMatch(String seekerSeniority, String referrerSeniority) {
-        Integer seekerLevel = toSeniorityLevel(seekerSeniority);
-        Integer refLevel = toSeniorityLevel(referrerSeniority);
-
-        if (seekerLevel == null || refLevel == null) {
-            return 0.5;
+    private List<String> jsonArray(JsonNode node, String... keys) {
+        for (String key : keys) {
+            if (node.has(key) && node.get(key).isArray()) {
+                List<String> list = new ArrayList<>();
+                node.get(key).forEach(e -> list.add(e.asText()));
+                return list;
+            }
         }
-
-        int delta = Math.abs(refLevel - seekerLevel);
-        if (delta == 0) {
-            return 1.0;
-        }
-        if (delta == 1) {
-            return 0.8;
-        }
-        if (delta == 2) {
-            return 0.6;
-        }
-        return 0.4;
-    }
-
-    private Integer toSeniorityLevel(String seniority) {
-        if (seniority == null || seniority.isBlank()) {
-            return null;
-        }
-
-        String normalized = normalize(seniority);
-        return switch (normalized) {
-            case "intern" -> 0;
-            case "junior" -> 1;
-            case "mid-level", "mid", "associate" -> 2;
-            case "senior" -> 3;
-            case "staff" -> 4;
-            case "principal" -> 5;
-            default -> null;
-        };
-    }
-
-    private List<String> tokenize(String value) {
-        return Arrays.stream(normalize(value).split("[^a-z0-9]+"))
-                .filter(s -> !s.isBlank())
-                .toList();
-    }
-
-    private String normalize(String value) {
-        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+        return List.of();
     }
 }

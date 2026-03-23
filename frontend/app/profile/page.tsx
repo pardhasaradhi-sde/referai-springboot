@@ -157,7 +157,7 @@ export default function ProfilePage() {
     return (
         <div className="min-h-screen bg-white">
             {/* Header */}
-            <nav className="border-b border-gray-200 px-12 py-6 flex items-center justify-between">
+            <nav className="border-b border-gray-200 px-4 md:px-12 py-4 md:py-6 flex items-center justify-between">
                 <Link href="/dashboard" className="text-2xl font-black tracking-tighter uppercase">
                     ReferAI
                 </Link>
@@ -174,15 +174,15 @@ export default function ProfilePage() {
                 </div>
             </nav>
 
-            <div className="max-w-4xl mx-auto px-12 py-12">
-                <div className="mb-12">
+            <div className="max-w-4xl mx-auto px-4 md:px-12 py-8 md:py-12">
+                <div className="mb-8 md:mb-12">
                     <h1 className="text-4xl font-black tracking-tighter mb-2">MY PROFILE</h1>
                     <p className="text-gray-500 text-sm">Manage your profile and preferences</p>
                 </div>
 
                 <div className="space-y-8">
                     {/* Basic Info */}
-                    <section className="border border-gray-200 p-8">
+                    <section className="border border-gray-200 p-6 md:p-8">
                         <div className="flex items-center gap-3 mb-6">
                             <User className="w-5 h-5" />
                             <h2 className="text-xl font-black uppercase tracking-tight">Basic Information</h2>
@@ -236,13 +236,13 @@ export default function ProfilePage() {
 
                     {/* Professional Info */}
                     {(formData.role === "referrer" || formData.role === "both") && (
-                        <section className="border border-gray-200 p-8">
+                        <section className="border border-gray-200 p-6 md:p-8">
                             <div className="flex items-center gap-3 mb-6">
                                 <Briefcase className="w-5 h-5" />
                                 <h2 className="text-xl font-black uppercase tracking-tight">Professional Details</h2>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-bold uppercase tracking-widest block mb-2">
                                         Company
@@ -314,7 +314,7 @@ export default function ProfilePage() {
                     )}
 
                     {/* Skills & Resume */}
-                    <section className="border border-gray-200 p-8">
+                    <section className="border border-gray-200 p-6 md:p-8">
                         <div className="flex items-center gap-3 mb-6">
                             <FileText className="w-5 h-5" />
                             <h2 className="text-xl font-black uppercase tracking-tight">Skills & Resume</h2>
@@ -448,7 +448,7 @@ export default function ProfilePage() {
 
                     {/* Save Button */}
                     {editing && (
-                        <div className="flex gap-4">
+                        <div className="flex flex-col sm:flex-row gap-4 mt-8">
                             <button
                                 onClick={handleSave}
                                 disabled={saving}

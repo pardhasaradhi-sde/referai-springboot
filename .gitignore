@@ -41,6 +41,7 @@ frontend/.next/
 frontend/out/
 frontend/build/
 frontend/dist/
+*.tsbuildinfo
 
 # ================================
 # ENV FILES / SECRETS
@@ -109,9 +110,28 @@ backend/uploads/
 frontend/public/uploads/
 
 # ================================
+# PYTHON / AI SERVICE
+# ================================
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+.mypy_cache/
+.tox/
+.ruff_cache/
+
+# ================================
 # KEEP IMPORTANT FILES
 # ================================
 !.gitignore
 !README.md
 !*.md
 !backend/src/main/resources/db/migration/*.sql
+
+
+ReferAI-Docs/*

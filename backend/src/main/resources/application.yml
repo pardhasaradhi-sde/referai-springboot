@@ -10,11 +10,10 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate         # Flyway owns the schema; Hibernate only validates
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
 
   flyway:
@@ -22,36 +21,64 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
+
+  # Gmail SMTP — set MAIL_USERNAME / MAIL_PASSWORD (App Password) when app.mail.enabled=true
+  mail:
+    host: ${MAIL_SMTP_HOST:smtp.gmail.com}
+    port: ${MAIL_SMTP_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+
 server:
   port: 8080
 
-# JWT
 app:
   jwt:
     secret: ${APP_JWT_SECRET}
-    expiration-ms: ${APP_JWT_EXPIRATION_MS}       # 24 hours
-    refresh-expiration-ms: 604800000  # 7 days
-
-  # Google Gemini
-  gemini:
-    api-key: ${GEMINI_API_KEY}
-    model: ${APP_GEMINI_MODEL:gemini-2.0-flash}
-    base-url: https://generativelanguage.googleapis.com/v1beta/models
-    max-retries: 3
-    base-retry-delay-ms: 1000
-    max-retry-delay-ms: 10000
+    expiration-ms: ${APP_JWT_EXPIRATION_MS}
+    refresh-expiration-ms: 604800000
 
   # Appwrite Storage
   appwrite:
     endpoint: https://sgp.cloud.appwrite.io/v1
-    project-id: 69b3a4410037d827ccf9
+    project-id: ${APPWRITE_PROJECT_ID}
     api-key: ${APPWRITE_API_KEY}
     bucket-id: referai-resumes
 
-  # Python AI Service
+  # Python AI Service (all AI lives here)
   python-service:
     url: ${PYTHON_SERVICE_URL:http://localhost:8010}
     internal-key: ${PYTHON_INTERNAL_KEY:referai-internal-secret-2026}
+    index-referrers-enabled: ${REFERRER_INDEXING_ENABLED:true}
+    connect-timeout-ms: ${PYTHON_SERVICE_CONNECT_TIMEOUT_MS:10000}
+    read-timeout-ms: ${PYTHON_SERVICE_READ_TIMEOUT_MS:300000}
+
+  # WebSocket
+  websocket:
+    allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+
+  # Email (Gmail SMTP). Use Google App Password for MAIL_PASSWORD when 2FA is on.
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from-address: ${MAIL_FROM:${MAIL_USERNAME:}}
+    from-name: ${MAIL_FROM_NAME:ReferAI}
+
+  # Links in notification emails (no trailing slash)
+  public:
+    frontend-base-url: ${APP_PUBLIC_FRONTEND_URL:http://localhost:3001}
 
 logging:
   level:

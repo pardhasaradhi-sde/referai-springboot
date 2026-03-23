@@ -22,6 +22,7 @@ class JobScraper:
     TIMEOUT = 30  # seconds
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     MIN_DESCRIPTION_WORDS = 40
+    DESCRIPTION_PREFERENCE_RATIO = 1.35
     DESCRIPTION_KEYWORDS = (
         "responsibilities",
         "requirements",
@@ -29,6 +30,19 @@ class JobScraper:
         "about the role",
         "what you'll do",
         "skills",
+    )
+    SECTION_KEYWORDS = (
+        "about the role",
+        "about this role",
+        "job description",
+        "responsibilities",
+        "what you'll do",
+        "what you will do",
+        "requirements",
+        "qualifications",
+        "preferred qualifications",
+        "minimum qualifications",
+        "eligibility",
     )
 
     @staticmethod
@@ -102,7 +116,10 @@ class JobScraper:
             job_title = job_data.get("job_title") or JobScraper._extract_title(soup)
             company = job_data.get("company") or JobScraper._extract_company(soup)
             location = job_data.get("location") or JobScraper._extract_location(soup)
-            description = job_data.get("description") or JobScraper._extract_description(soup)
+            json_ld_description = JobScraper._clean_text(job_data.get("description"))
+            generic_description = JobScraper._clean_text(JobScraper._extract_description(soup))
+
+            description = JobScraper._choose_best_description(json_ld_description, generic_description)
 
             description = JobScraper._clean_text(description)
             word_count = len(description.split()) if description else 0
@@ -342,12 +359,22 @@ class JobScraper:
                 if not isinstance(tag, Tag):
                     continue
 
-                text = JobScraper._clean_text(tag.get_text(separator="\n", strip=True))
+                # Work on a local fragment and drop noisy nodes first to avoid returning
+                # script/config payloads that some modern job pages embed in main content.
+                fragment = BeautifulSoup(str(tag), "lxml")
+                for noisy in fragment.select("script, style, noscript, template, svg"):
+                    noisy.decompose()
+
+                text = JobScraper._clean_text(fragment.get_text(separator="\n", strip=True))
+                text = JobScraper._strip_machine_payload_lines(text)
                 if not text:
                     continue
 
                 word_count = len(text.split())
                 if word_count < 20:
+                    continue
+
+                if not JobScraper._is_human_readable_description(text):
                     continue
 
                 lower = text.lower()
@@ -363,14 +390,113 @@ class JobScraper:
                     best_score = score
                     best_text = text
 
+        section_text = JobScraper._extract_section_based_description(soup)
+        if section_text:
+            section_words = JobScraper._word_count(section_text)
+            best_words = JobScraper._word_count(best_text)
+            if section_words >= max(best_words + 40, int(best_words * 1.25)):
+                best_text = section_text
+
         if best_text:
             return best_text
 
         body = soup.body
         if body:
-            return JobScraper._clean_text(body.get_text(separator="\n", strip=True))
+            fragment = BeautifulSoup(str(body), "lxml")
+            for noisy in fragment.select("script, style, noscript, template, svg"):
+                noisy.decompose()
+            text = JobScraper._clean_text(fragment.get_text(separator="\n", strip=True))
+            text = JobScraper._strip_machine_payload_lines(text)
+            if JobScraper._is_human_readable_description(text):
+                return text
 
         return None
+
+    @staticmethod
+    def _extract_section_based_description(soup: BeautifulSoup) -> str | None:
+        chunks: list[str] = []
+
+        # 1) Pull known section containers directly by id/class semantics.
+        section_selectors = (
+            "[id*=responsibilit]",
+            "[class*=responsibilit]",
+            "[id*=requirement]",
+            "[class*=requirement]",
+            "[id*=qualification]",
+            "[class*=qualification]",
+            "[id*=job-description]",
+            "[class*=job-description]",
+            "[id*=jobDescription]",
+            "[class*=jobDescription]",
+        )
+
+        for selector in section_selectors:
+            for tag in soup.select(selector):
+                if not isinstance(tag, Tag):
+                    continue
+                text = JobScraper._extract_clean_fragment_text(tag)
+                if text and JobScraper._word_count(text) >= 20:
+                    chunks.append(text)
+
+        # 2) Find heading anchors and append neighboring content blocks.
+        for heading in soup.select("h1, h2, h3, h4, h5, strong"):
+            if not isinstance(heading, Tag):
+                continue
+
+            heading_text = JobScraper._clean_text(heading.get_text(" ", strip=True))
+            if not heading_text:
+                continue
+            heading_lower = heading_text.lower()
+
+            if not any(keyword in heading_lower for keyword in JobScraper.SECTION_KEYWORDS):
+                continue
+
+            neighbor_parts: list[str] = []
+            steps = 0
+            sibling = heading.find_next_sibling()
+            while sibling is not None and steps < 5:
+                if isinstance(sibling, Tag):
+                    # stop at next heading to avoid bleeding into unrelated sections
+                    if sibling.name in {"h1", "h2", "h3", "h4", "h5"}:
+                        break
+                    text = JobScraper._extract_clean_fragment_text(sibling)
+                    if text and JobScraper._word_count(text) >= 12:
+                        neighbor_parts.append(text)
+                sibling = sibling.find_next_sibling() if isinstance(sibling, Tag) else None
+                steps += 1
+
+            if neighbor_parts:
+                chunks.append("\n\n".join(neighbor_parts))
+
+        if not chunks:
+            return None
+
+        # De-duplicate near-identical chunks.
+        normalized_seen: set[str] = set()
+        merged: list[str] = []
+        for chunk in chunks:
+            key = re.sub(r"\W+", " ", chunk.lower()).strip()
+            if len(key) < 30:
+                continue
+            short_key = key[:240]
+            if short_key in normalized_seen:
+                continue
+            normalized_seen.add(short_key)
+            merged.append(chunk)
+
+        combined = JobScraper._clean_text("\n\n".join(merged))
+        combined = JobScraper._strip_machine_payload_lines(combined)
+        if not JobScraper._is_human_readable_description(combined):
+            return None
+        return combined
+
+    @staticmethod
+    def _extract_clean_fragment_text(tag: Tag) -> str | None:
+        fragment = BeautifulSoup(str(tag), "lxml")
+        for noisy in fragment.select("script, style, noscript, template, svg"):
+            noisy.decompose()
+        text = JobScraper._clean_text(fragment.get_text(separator="\n", strip=True))
+        return JobScraper._strip_machine_payload_lines(text)
 
     @staticmethod
     def _normalize_source(domain: str) -> str:
@@ -389,6 +515,92 @@ class JobScraper:
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         cleaned = cleaned.strip()
         return cleaned or None
+
+    @staticmethod
+    def _word_count(text: str | None) -> int:
+        return len(text.split()) if text else 0
+
+    @staticmethod
+    def _looks_like_machine_payload(line: str) -> bool:
+        if not line:
+            return False
+
+        lowered = line.lower()
+        if "<script" in lowered or "</script" in lowered:
+            return True
+
+        known_payload_tokens = (
+            "themeoptions",
+            "navbardata",
+            "pcsxconfig",
+            "questionnaireid",
+            "notificationconfig",
+            "customtheme",
+        )
+        if any(token in lowered for token in known_payload_tokens):
+            return True
+
+        alpha_count = sum(1 for ch in line if ch.isalpha())
+        symbol_count = sum(1 for ch in line if ch in "{}[]<>:=;\"`")
+        has_json_shape = "{" in line and "}" in line and ":" in line
+
+        if has_json_shape and symbol_count > max(8, alpha_count // 2):
+            return True
+
+        if len(line) > 180 and symbol_count > alpha_count * 0.35:
+            return True
+
+        return False
+
+    @staticmethod
+    def _strip_machine_payload_lines(text: str | None) -> str | None:
+        if not text:
+            return None
+
+        kept_lines: list[str] = []
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                kept_lines.append("")
+                continue
+            if JobScraper._looks_like_machine_payload(line):
+                continue
+            kept_lines.append(line)
+
+        return JobScraper._clean_text("\n".join(kept_lines))
+
+    @staticmethod
+    def _is_human_readable_description(text: str | None) -> bool:
+        if not text:
+            return False
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return False
+
+        payload_like = sum(1 for line in lines if JobScraper._looks_like_machine_payload(line))
+        return (payload_like / len(lines)) < 0.25
+
+    @staticmethod
+    def _choose_best_description(json_ld_description: str | None, generic_description: str | None) -> str | None:
+        if generic_description and not JobScraper._is_human_readable_description(generic_description):
+            generic_description = None
+
+        if not json_ld_description:
+            return generic_description
+        if not generic_description:
+            return json_ld_description
+
+        json_ld_words = JobScraper._word_count(json_ld_description)
+        generic_words = JobScraper._word_count(generic_description)
+
+        if json_ld_words < JobScraper.MIN_DESCRIPTION_WORDS:
+            return generic_description
+
+        if generic_words > int(json_ld_words * JobScraper.DESCRIPTION_PREFERENCE_RATIO):
+            return generic_description
+
+        return json_ld_description
 
     @staticmethod
     async def _scrape_linkedin(url: str) -> tuple[bool, dict | None, str | None]:
@@ -436,6 +648,14 @@ class JobScraper:
                     False,
                     None,
                     "Could not extract job description from LinkedIn. Trying generic parsing.",
+                )
+
+            description = JobScraper._clean_text(description)
+            if JobScraper._word_count(description) < JobScraper.MIN_DESCRIPTION_WORDS:
+                return (
+                    False,
+                    None,
+                    "LinkedIn description snippet too short. Trying generic parsing.",
                 )
 
             logger.info("job_scraper.linkedin.success", title=job_title)
@@ -494,6 +714,10 @@ class JobScraper:
             if not description:
                 return False, None, "Could not extract job description from Indeed. Trying generic parsing."
 
+            description = JobScraper._clean_text(description)
+            if JobScraper._word_count(description) < JobScraper.MIN_DESCRIPTION_WORDS:
+                return False, None, "Indeed description snippet too short. Trying generic parsing."
+
             logger.info("job_scraper.indeed.success", title=job_title)
 
             return (
@@ -548,6 +772,10 @@ class JobScraper:
             if not description:
                 return False, None, "Could not extract job description from Naukri. Trying generic parsing."
 
+            description = JobScraper._clean_text(description)
+            if JobScraper._word_count(description) < JobScraper.MIN_DESCRIPTION_WORDS:
+                return False, None, "Naukri description snippet too short. Trying generic parsing."
+
             logger.info("job_scraper.naukri.success", title=job_title)
 
             return (
@@ -601,6 +829,10 @@ class JobScraper:
 
             if not description:
                 return False, None, "Could not extract job description from Glassdoor. Trying generic parsing."
+
+            description = JobScraper._clean_text(description)
+            if JobScraper._word_count(description) < JobScraper.MIN_DESCRIPTION_WORDS:
+                return False, None, "Glassdoor description snippet too short. Trying generic parsing."
 
             logger.info("job_scraper.glassdoor.success", title=job_title)
 

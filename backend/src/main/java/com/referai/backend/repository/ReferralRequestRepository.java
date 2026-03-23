@@ -2,20 +2,21 @@ package com.referai.backend.repository;
 
 import com.referai.backend.entity.ReferralRequest;
 import com.referai.backend.entity.RequestStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface ReferralRequestRepository extends JpaRepository<ReferralRequest, UUID> {
 
     @Query("SELECT r FROM ReferralRequest r LEFT JOIN FETCH r.referrer LEFT JOIN FETCH r.conversation WHERE r.seeker.id = :seekerId ORDER BY r.createdAt DESC")
-    List<ReferralRequest> findBySeekerIdOrderByCreatedAtDesc(UUID seekerId);
+    Page<ReferralRequest> findBySeekerIdOrderByCreatedAtDesc(UUID seekerId, Pageable pageable);
 
     @Query("SELECT r FROM ReferralRequest r LEFT JOIN FETCH r.seeker LEFT JOIN FETCH r.conversation WHERE r.referrer.id = :referrerId ORDER BY r.createdAt DESC")
-    List<ReferralRequest> findByReferrerIdOrderByCreatedAtDesc(UUID referrerId);
+    Page<ReferralRequest> findByReferrerIdOrderByCreatedAtDesc(UUID referrerId, Pageable pageable);
 
     /**
      * Find existing active (PENDING or ACCEPTED) request between seeker and referrer.

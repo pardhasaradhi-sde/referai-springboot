@@ -6,7 +6,6 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
 import java.net.URI;
 
 @RestControllerAdvice
@@ -48,6 +47,14 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
+    @ExceptionHandler(com.referai.backend.exception.QuotaExceededException.class)
+    public ProblemDetail handleQuotaExceeded(com.referai.backend.exception.QuotaExceededException ex) {
+        log.warn("Quota exceeded: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+        pd.setType(URI.create("about:blank"));
+        return pd;
+    }
+
     @ExceptionHandler(ExternalServiceException.class)
     public ProblemDetail handleExternalService(ExternalServiceException ex) {
         log.warn("External service error: {}", ex.getMessage());
@@ -56,11 +63,19 @@ public class GlobalExceptionHandler {
         return pd;
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ProblemDetail handleRuntime(RuntimeException ex) {
-        log.error("Internal error", ex);
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ProblemDetail handleNotFound(ResourceNotFoundException ex) {
+        log.warn("Not found: {}", ex.getMessage());
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        pd.setType(URI.create("about:blank"));
+        return pd;
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ProblemDetail handleRuntime(Exception ex) {
+        log.error("Internal server error: ", ex);
         ProblemDetail pd = ProblemDetail.forStatusAndDetail(
-                HttpStatus.INTERNAL_SERVER_ERROR, "An internal error occurred");
+                HttpStatus.INTERNAL_SERVER_ERROR, "An internal error occurred. Our team has been notified.");
         pd.setType(URI.create("about:blank"));
         return pd;
     }

@@ -19,8 +19,19 @@ public class AuthController {
         return ResponseEntity.ok(authService.register(req));
     }
 
+    /**
+     * Step 1: validate password, send OTP to email (or store only if mail disabled).
+     */
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest req) {
-        return ResponseEntity.ok(authService.login(req));
+    public ResponseEntity<LoginOtpSentResponse> login(@Valid @RequestBody LoginRequest req) {
+        return ResponseEntity.ok(authService.initiateLogin(req));
+    }
+
+    /**
+     * Step 2: validate password + OTP from Redis, return JWT.
+     */
+    @PostMapping("/login/verify-otp")
+    public ResponseEntity<AuthResponse> verifyLoginOtp(@Valid @RequestBody LoginVerifyOtpRequest req) {
+        return ResponseEntity.ok(authService.verifyLoginOtp(req));
     }
 }

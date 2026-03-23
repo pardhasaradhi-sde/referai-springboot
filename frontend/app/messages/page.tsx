@@ -34,7 +34,7 @@ export default function MessagesPage() {
                     <Link href="/dashboard" className="text-sm font-bold uppercase tracking-widest hover:underline">
                         ← Back to Dashboard
                     </Link>
-                    <h1 className="text-5xl font-black tracking-tighter mt-4">MESSAGES</h1>
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tighter mt-4">MESSAGES</h1>
                 </div>
 
                 {loading ? (
@@ -58,10 +58,10 @@ export default function MessagesPage() {
                                     href={`/messages/${conv.id}`}
                                     className="block p-6 border border-gray-200 hover:border-black transition-colors"
                                 >
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
                                         <div>
                                             <div className="font-black text-xl">{otherUser.fullName}</div>
-                                            <div className="text-sm text-gray-500">
+                                            <div className="text-sm text-gray-500 line-clamp-1">
                                                 {otherUser.company} • {otherUser.jobTitle}
                                             </div>
                                         </div>

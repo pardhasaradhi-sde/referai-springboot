@@ -59,3 +59,23 @@ export function sendStompMessage(
   });
 }
 
+/**
+ * Subscribe to real-time notifications for the current user.
+ * Connected to /user/queue/notifications.
+ */
+export function subscribeToNotifications(
+  client: Client,
+  onNotification: (notification: unknown) => void
+): () => void {
+  const sub = client.subscribe(
+    `/user/queue/notifications`,
+    (frame: IMessage) => {
+      try {
+        onNotification(JSON.parse(frame.body));
+      } catch (err) {
+        console.error("Failed to parse Notification WS message:", err);
+      }
+    }
+  );
+  return () => sub.unsubscribe();
+}

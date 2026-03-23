@@ -3,6 +3,7 @@ package com.referai.backend.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,14 @@ public class FileStorageService {
 
     public String uploadFile(MultipartFile file, UUID userId) throws Exception {
         try {
+            if (file == null || file.isEmpty()) {
+                throw new Exception("File is empty");
+            }
+
+            if (projectId == null || projectId.isBlank()) {
+                throw new Exception("Appwrite project ID is not configured");
+            }
+
             // Generate unique filename
             String originalFilename = file.getOriginalFilename();
             String extension = originalFilename != null && originalFilename.contains(".") 
@@ -41,6 +50,8 @@ public class FileStorageService {
             String uniqueFilename = userId + "_" + Instant.now().toEpochMilli() + extension;
             // Appwrite IDs must be <= 36 chars. Raw UUID (36 chars) is safe.
             String fileId = UUID.randomUUID().toString();
+
+            byte[] fileBytes = file.getBytes();
             
             // Build multipart request
             MultipartBodyBuilder builder = new MultipartBodyBuilder();
@@ -48,8 +59,14 @@ public class FileStorageService {
             String contentType = file.getContentType() != null
                     ? file.getContentType()
                     : MediaType.APPLICATION_OCTET_STREAM_VALUE;
-            builder.part("file", file.getResource())
-                    .filename(uniqueFilename)
+            ByteArrayResource byteArrayResource = new ByteArrayResource(fileBytes) {
+                @Override
+                public String getFilename() {
+                    return uniqueFilename;
+                }
+            };
+
+            builder.part("file", byteArrayResource)
                     .contentType(MediaType.parseMediaType(contentType));
             
             // Upload to Appwrite

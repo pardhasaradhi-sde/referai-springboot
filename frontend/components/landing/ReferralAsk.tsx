@@ -25,11 +25,12 @@ export function ReferralAsk() {
                 alt="User"
                 width={32}
                 height={32}
+                unoptimized
               />
             </div>
             <div className="bg-gray-50 rounded-2xl rounded-tl-sm p-4 text-sm text-gray-500 w-full">
-              <p className="font-medium text-gray-900 mb-1">Raw Context</p>
-              &quot;I want to ask Sarah for a referral at Linear. I know she works on the sync engine and I have experience with CRDTs.&quot;
+              <p className="font-medium text-gray-900 mb-1">Your Input</p>
+              &quot;Referrer: Sarah Jenkins, Senior SDE at Linear. I have 3 years of distributed systems experience and have shipped a CRDT-based sync engine. Looking for a referral to the Core Infrastructure team.&quot;
             </div>
           </div>
 
@@ -66,10 +67,10 @@ export function ReferralAsk() {
 
                   <div className="mt-6 flex gap-2">
                     <div className="px-3 py-1 bg-gray-50 rounded border border-gray-100 text-[10px] font-bold uppercase text-gray-500 flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Professional Tone
+                      <Check className="w-3 h-3" /> Seniority-Aware Tone
                     </div>
                     <div className="px-3 py-1 bg-gray-50 rounded border border-gray-100 text-[10px] font-bold uppercase text-gray-500 flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Technical Context
+                      <Check className="w-3 h-3" /> Zero Hallucinations
                     </div>
                   </div>
                 </div>

@@ -1,102 +1,89 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode } from "react";
-import { Twitter, Linkedin, Github, Disc as Discord, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
+import { Magnetic } from "./Magnetic";
 
 export function Footer() {
   return (
-    <footer className="bg-black text-white border-t border-white/10">
+    <footer className="bg-[#050505] text-white pt-32 pb-12 px-8 md:px-16 border-t border-white/5">
       <div className="max-w-[1600px] mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-12 border-b border-white/10">
-          <div className="md:col-span-4 p-12 md:p-24 border-b md:border-b-0 md:border-r border-white/10 flex flex-col justify-between">
-            <div>
-              <span className="text-3xl font-black tracking-tighter uppercase block mb-8">ReferAI</span>
-              <p className="text-gray-400 max-w-sm leading-relaxed text-sm">
-                The first heuristic matchmaking engine for tech referrals that connects you with advocates who want to refer strong candidates.
-              </p>
-            </div>
-            <div className="mt-12 md:mt-0 flex gap-4">
-              <SocialLink href="#" icon={<Twitter className="w-5 h-5" />} />
-              <SocialLink href="#" icon={<Github className="w-5 h-5" />} />
-              <SocialLink href="#" icon={<Linkedin className="w-5 h-5" />} />
-              <SocialLink href="#" icon={<Discord className="w-5 h-5" />} />
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-16 md:gap-8 mb-12">
+          
+          {/* Column 1: SOCIALS */}
+          <div className="md:col-span-2 flex flex-col">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#555] mb-8 block">SOCIALS</span>
+            <ul className="space-y-6">
+              <FooterLink href="https://github.com/pardhasaradhi-sde" label="GITHUB" />
+              <FooterLink href="https://linkedin.com/in/pardha-saradhi18/" label="LINKEDIN" />
+              <FooterLink href="https://x.com/__pardhu" label="TWITTER" />
+              <FooterLink href="https://www.instagram.com/___pardhu___/" label="INSTAGRAM" />
+            </ul>
           </div>
 
-          <div className="md:col-span-8 grid grid-cols-2 md:grid-cols-4">
-            <FooterColumn
-              title="Product"
-              links={[
-                { label: "The Feed", href: "#network" },
-                { label: "Match Engine", href: "#engine" },
-                { label: "AI Drafter", href: "#draft" },
-                { label: "Pricing", href: "/pricing" },
-              ]}
-            />
-            <FooterColumn
-              title="Company"
-              links={[
-                { label: "Manifesto", href: "/manifesto" },
-                { label: "Careers", href: "/careers" },
-                { label: "Blog", href: "/blog" },
-                { label: "Contact", href: "/contact" },
-              ]}
-            />
-            <FooterColumn
-              title="Resources"
-              links={[
-                { label: "Resume Guide", href: "/guide" },
-                { label: "Referral Templates", href: "/templates" },
-                { label: "Success Stories", href: "/stories" },
-                { label: "Help Center", href: "/help" },
-              ]}
-            />
-            <div className="p-12 md:p-16 flex flex-col justify-between border-l border-white/10">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Status</span>
-              <div className="flex items-center gap-2 mt-4">
-                <span className="w-2 h-2 rounded-full bg-brand-accent animate-pulse" />
-                <span className="text-xs font-bold text-brand-accent uppercase tracking-wider">Systems Normal</span>
-              </div>
-            </div>
+          {/* Column 2: COMPETITIVE CODING */}
+          <div className="md:col-span-2 flex flex-col">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#555] mb-8 block">COMPETITIVE CODING</span>
+            <ul className="space-y-6">
+              <FooterLink href="https://leetcode.com/u/_pardhu_/" label="LEETCODE" />
+              <FooterLink href="https://www.geeksforgeeks.org/profile/seerapupact2i/" label="GEEKSFORGEEKS" />
+              <FooterLink href="https://www.codechef.com/users/soon_spice_01" label="CODECHEF" />
+            </ul>
           </div>
+
+          {/* Column 3: REFERAI LINKS */}
+          <div className="md:col-span-2 flex flex-col">
+             <span className="text-[10px] font-bold uppercase tracking-widest text-[#555] mb-8 block">REFERAI PLATFORM</span>
+             <ul className="space-y-6">
+              <FooterLink href="#network" label="THE NETWORK" isInternal />
+              <FooterLink href="#engine" label="MATCH ENGINE" isInternal />
+              <FooterLink href="#draft" label="AI DRAFTER" isInternal />
+              <FooterLink href="/auth/signup" label="START JOURNEY" isInternal />
+            </ul>
+          </div>
+
+          {/* Column 4: WANT TO CONNECT? */}
+          <div className="md:col-span-6 flex flex-col justify-between items-start md:items-end mt-12 md:mt-0">
+             <span className="text-[10px] font-bold uppercase tracking-widest text-[#555] mb-8 block md:text-right w-full">WANT TO CONNECT?</span>
+             <div className="flex flex-col items-start md:items-end w-full">
+                <Magnetic strength={0.3}>
+                  <a href="mailto:seerapupardhu123@gmail.com" className="text-7xl md:text-8xl lg:text-[9.5rem] leading-[0.85] font-black tracking-tighter text-white hover:text-[#c4f82a] transition-colors decoration-transparent cursor-pointer block">
+                     REFERAI
+                  </a>
+                </Magnetic>
+                <a href="mailto:seerapupardhu123@gmail.com" className="text-gray-400 hover:text-white transition-colors mt-8 text-sm md:text-base tracking-widest font-medium uppercase">
+                   seerapupardhu123@gmail.com
+                </a>
+             </div>
+          </div>
+
         </div>
 
-        <div className="px-12 py-8 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-gray-500">
-          <div className="flex gap-8">
-            <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
-            <Link href="/cookies" className="hover:text-white transition-colors">Cookie Settings</Link>
-          </div>
-          <span>&copy; 2025 ReferAI Inc. All rights reserved.</span>
+        {/* Bottom Bar */}
+        <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-white/10 text-[10px] font-bold uppercase tracking-widest text-[#555] gap-4 md:gap-0">
+          <span className="flex-1 text-center md:text-left">&copy; 2026 SEERAPU PARDHA SARADHI</span>
+          <span className="flex-1 text-center text-gray-400">BUILT BY A STUDENT WHO GOT TIRED OF BEING IGNORED BY ATS.</span>
+          <span className="flex-1 text-center md:text-right">HYDERABAD, INDIA</span>
         </div>
       </div>
     </footer>
   );
 }
 
-function FooterColumn({ title, links }: { title: string; links: { label: string; href: string }[] }) {
+function FooterLink({ href, label, isInternal = false }: { href: string; label: string; isInternal?: boolean }) {
   return (
-    <div className="p-12 md:p-16 border-r border-b md:border-b-0 border-white/10 flex flex-col h-full">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-8 block">{title}</span>
-      <ul className="space-y-4 flex-1">
-        {links.map((link) => (
-          <li key={link.label}>
-            <Link href={link.href} className="text-sm font-bold text-gray-300 hover:text-white transition-colors flex items-center gap-1 group">
-              {link.label}
-              <ArrowUpRight className="w-3 h-3 opacity-0 -translate-y-1 translate-x-1 group-hover:opacity-100 group-hover:translate-y-0 group-hover:translate-x-0 transition-all" />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function SocialLink({ href, icon }: { href: string; icon: ReactNode }) {
-  return (
-    <Link href={href} className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:bg-white hover:text-black transition-all">
-      {icon}
-    </Link>
+    <li>
+      <Magnetic strength={0.2}>
+        <Link 
+          href={href} 
+          target={isInternal ? undefined : "_blank"}
+          rel={isInternal ? undefined : "noopener noreferrer"}
+          className="text-lg md:text-xl font-bold uppercase tracking-tighter text-gray-200 hover:text-[#c4f82a] transition-colors flex items-center gap-2 group w-fit"
+        >
+          {label}
+          <span className="w-1.5 h-1.5 rounded-full bg-[#c4f82a] opacity-0 group-hover:opacity-100 transition-opacity" />
+        </Link>
+      </Magnetic>
+    </li>
   );
 }

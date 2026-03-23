@@ -28,6 +28,7 @@ public class ConversationService {
     private final ProfileRepository profileRepository;
     private final SimpMessagingTemplate messagingTemplate;  // WebSocket broadcaster
     private final EntityMapper mapper;
+    private final EmailService emailService;
 
     public List<ConversationDto> getUserConversations(UUID userId) {
         return conversationRepository.findByParticipant(userId)
@@ -59,10 +60,15 @@ public class ConversationService {
         Profile sender = profileRepository.findById(senderId)
                 .orElseThrow(() -> new IllegalArgumentException("Sender profile not found"));
 
+        String cleanContent = req.content();
+        if (cleanContent == null || cleanContent.trim().isEmpty()) {
+            throw new IllegalArgumentException("Message content cannot be empty");
+        }
+
         Message message = Message.builder()
                 .conversation(conv)
                 .sender(sender)
-                .content(req.content())
+                .content(cleanContent)
                 .isAiSuggested(req.isAiSuggested() != null && req.isAiSuggested())
                 .build();
 
@@ -79,6 +85,16 @@ public class ConversationService {
                 "/topic/conversations/" + conversationId,
                 dto
         );
+
+        Profile recipient = senderId.equals(conv.getSeeker().getId()) ? conv.getReferrer() : conv.getSeeker();
+        if (recipient.getEmail() != null && !recipient.getEmail().isBlank()) {
+            emailService.sendNewMessageNotificationAsync(
+                    recipient.getEmail(),
+                    recipient.getFullName(),
+                    sender.getFullName(),
+                    cleanContent,
+                    conversationId);
+        }
 
         return dto;
     }

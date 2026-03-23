@@ -2,13 +2,16 @@ package com.referai.backend.service;
 
 import com.referai.backend.dto.*;
 import com.referai.backend.entity.*;
+import com.referai.backend.exception.ResourceNotFoundException;
 import com.referai.backend.mapper.EntityMapper;
 import com.referai.backend.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,6 +24,8 @@ public class ReferralRequestService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final EntityMapper mapper;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final EmailService emailService;
 
     @Transactional
     public ReferralRequestDto sendRequest(UUID seekerId, SendReferralRequestDto dto) {
@@ -41,7 +46,7 @@ public class ReferralRequestService {
 
             // If request is PENDING, return it (idempotent behavior)
             if (existing.getStatus() == RequestStatus.PENDING) {
-                return mapper.toRequestDto(existing);
+                return mapper.toRequestDto(existing); // idempotent: do not re-send email
             }
 
             // If request is ACCEPTED, throw error - cannot send another while one is accepted
@@ -65,17 +70,55 @@ public class ReferralRequestService {
                 .status(RequestStatus.PENDING)
                 .build();
 
-        return mapper.toRequestDto(requestRepository.save(request));
+        request = requestRepository.save(request);
+        
+        // Notify referrer
+        messagingTemplate.convertAndSendToUser(
+            referrer.getId().toString(),
+            "/queue/notifications",
+            new NotificationDto(
+                UUID.randomUUID(),
+                "NEW_REQUEST",
+                "New Referral Request",
+                seeker.getFullName() + " wants a referral for " + formatJobAtCompany(dto.jobTitle(), dto.targetCompany()),
+                Instant.now(),
+                false
+            )
+        );
+
+        emailService.sendReferralRequestNotificationAsync(
+                referrer.getEmail(),
+                referrer.getFullName(),
+                seeker.getFullName(),
+                dto.jobTitle(),
+                dto.targetCompany(),
+                request.getId());
+
+        return mapper.toRequestDto(request);
     }
 
-    public List<ReferralRequestDto> getOutgoingRequests(UUID seekerId) {
-        return requestRepository.findBySeekerIdOrderByCreatedAtDesc(seekerId)
-                .stream().map(mapper::toRequestDto).toList();
+    public Page<ReferralRequestDto> getOutgoingRequests(UUID seekerId, Pageable pageable) {
+        return requestRepository.findBySeekerIdOrderByCreatedAtDesc(seekerId, pageable)
+                .map(mapper::toRequestDto);
     }
 
-    public List<ReferralRequestDto> getIncomingRequests(UUID referrerId) {
-        return requestRepository.findByReferrerIdOrderByCreatedAtDesc(referrerId)
-                .stream().map(mapper::toRequestDto).toList();
+    public Page<ReferralRequestDto> getIncomingRequests(UUID referrerId, Pageable pageable) {
+        return requestRepository.findByReferrerIdOrderByCreatedAtDesc(referrerId, pageable)
+                .map(mapper::toRequestDto);
+    }
+
+    /**
+     * Ensures the user is the seeker or referrer on this request before recording an outcome.
+     */
+    @Transactional(readOnly = true)
+    public void assertUserMayReportOutcome(UUID requestId, UUID userId) {
+        ReferralRequest request = requestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Referral request not found"));
+        UUID seekerId = request.getSeeker().getId();
+        UUID referrerId = request.getReferrer().getId();
+        if (!userId.equals(seekerId) && !userId.equals(referrerId)) {
+            throw new SecurityException("Not authorized to report outcome for this request");
+        }
     }
 
     @Transactional
@@ -124,6 +167,20 @@ public class ReferralRequestService {
             messageRepository.save(initMsg);
         }
 
+        // Notify seeker
+        messagingTemplate.convertAndSendToUser(
+            request.getSeeker().getId().toString(),
+            "/queue/notifications",
+            new NotificationDto(
+                UUID.randomUUID(),
+                "REQUEST_ACCEPTED",
+                "Request Accepted",
+                request.getReferrer().getFullName() + " accepted your referral request!",
+                Instant.now(),
+                false
+            )
+        );
+
         return mapper.toConversationDto(conversation);
     }
 
@@ -145,6 +202,20 @@ public class ReferralRequestService {
 
         request.setStatus(RequestStatus.DECLINED);
         requestRepository.save(request);
+
+        // Notify seeker
+        messagingTemplate.convertAndSendToUser(
+            request.getSeeker().getId().toString(),
+            "/queue/notifications",
+            new NotificationDto(
+                UUID.randomUUID(),
+                "REQUEST_DECLINED",
+                "Request Declined",
+                request.getReferrer().getFullName() + " declined your referral request.",
+                Instant.now(),
+                false
+            )
+        );
     }
 
     /**
@@ -175,5 +246,14 @@ public class ReferralRequestService {
             conversation.setIsActive(false);
             conversationRepository.save(conversation);
         });
+    }
+
+    private String formatJobAtCompany(String jobTitle, String company) {
+        if (jobTitle == null || jobTitle.isBlank()) return "a role";
+        if (company == null || company.isBlank()) return jobTitle;
+        if (jobTitle.toLowerCase().contains(company.toLowerCase())) {
+            return jobTitle;
+        }
+        return jobTitle + " at " + company;
     }
 }

@@ -28,6 +28,30 @@ class Settings(BaseSettings):
     run_migrations: bool = False
     migrations_path: str = "migrations/sql"
 
+    # Groq (OpenAI-compatible API) for all generation/streaming tasks.
+    groq_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("GROQ_API_KEY"),
+    )
+    groq_base_url: str = Field(
+        default="https://api.groq.com/openai/v1",
+        validation_alias=AliasChoices("GROQ_BASE_URL"),
+    )
+    groq_model: str = Field(
+        default="llama-3.1-8b-instant",
+        validation_alias=AliasChoices("GROQ_MODEL"),
+    )
+
+    # Gemini is restricted to embedding generation only.
+    gemini_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("GEMINI_API_KEY"),
+    )
+    gemini_embedding_model: str = Field(
+        default="gemini-embedding-001",
+        validation_alias=AliasChoices("GEMINI_EMBEDDING_MODEL"),
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -14,7 +14,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 
@@ -41,9 +40,9 @@ public class JwtChannelInterceptor implements ChannelInterceptor {
                 String token = authHeader.substring(7);
                 if (jwtTokenProvider.validateToken(token)) {
                     UUID userId = jwtTokenProvider.getUserIdFromToken(token);
-                    Principal principal = userId::toString;
                     accessor.setUser(new UsernamePasswordAuthenticationToken(
-                            principal, null,
+                            userId,
+                            null,
                             List.of(new SimpleGrantedAuthority("ROLE_USER"))
                     ));
                     log.debug("[WS] Authenticated STOMP connection for user {}", userId);
