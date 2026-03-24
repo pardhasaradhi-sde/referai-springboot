@@ -379,6 +379,7 @@ async def semantic_retrieval(state: MatchingState) -> MatchingState:
         candidate_tier_by_id: dict[str, str] = {}
         tier_a: list[CandidateProfile] = []
         tier_b: list[CandidateProfile] = []
+        tier_c: list[CandidateProfile] = []
 
         for candidate in candidates:
             if target_company and _company_matches_target(candidate.get("company", ""), target_company):
