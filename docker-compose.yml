@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: referai-backend
+    ports:
+      - "8080:8080"
+    environment:
+      # These must be provided in an .env file on the EC2 server alongside this docker-compose.yml
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=${NEON_DB_JDBC_URL}
+      - SPRING_DATASOURCE_USERNAME=${NEON_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${NEON_DB_PASSWORD}
+      - APP_JWT_SECRET=${APP_JWT_SECRET}
+      - APPWRITE_PROJECT_ID=${APPWRITE_PROJECT_ID}
+      - APPWRITE_API_KEY=${APPWRITE_API_KEY}
+      - PYTHON_SERVICE_URL=http://ai-service:8010
+      - PYTHON_INTERNAL_KEY=${PYTHON_INTERNAL_KEY}
+      - REDIS_URL=${UPSTASH_REDIS_URL}
+      - MAIL_ENABLED=${MAIL_ENABLED:-false}
+      - MAIL_SMTP_HOST=${MAIL_SMTP_HOST:-smtp.gmail.com}
+      - MAIL_SMTP_PORT=${MAIL_SMTP_PORT:-587}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - APP_PUBLIC_FRONTEND_URL=${APP_PUBLIC_FRONTEND_URL:-https://your-frontend.vercel.app}
+    networks:
+      - referai-net
+    depends_on:
+      - ai-service
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./referai-ai-service
+      dockerfile: Dockerfile
+    container_name: referai-ai-service
+    # No ports exposed! It is safely hidden inside referai-net 
+    environment:
+      - X_INTERNAL_KEY=${PYTHON_INTERNAL_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - POSTGRES_URL=${NEON_DB_PYTHON_URL}  # Note: Python needs postgresql:// URL, not jdbc:// URL
+      - REDIS_URL=${UPSTASH_REDIS_URL}
+    networks:
+      - referai-net
+    restart: unless-stopped
+
+networks:
+  referai-net:
+    driver: bridge
