@@ -7,6 +7,11 @@ import math
 from app.core.logging import get_logger
 from app.core.vector import cosine_similarity
 from app.db.postgres import get_postgres_pool
+from app.services.embedding_service import embed_query, embed_batch
+from app.services.llm_client import generate
+from app.services.outcome_service import get_outcome_patterns
+
+logger = get_logger(__name__)
 
 
 def _first_name(full_name: str) -> str:
