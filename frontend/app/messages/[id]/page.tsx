@@ -32,6 +32,18 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     const [coachStage, setCoachStage] = useState<CoachStage>("first_contact");
     const coachAbortRef = useRef<AbortController | null>(null);
 
+    // Parse structured coach output into advice + message sections
+    const parseCoachOutput = (text: string) => {
+        const adviceMatch = text.match(/\[ADVICE\]([\s\S]*?)(?=\[MESSAGE\]|$)/);
+        const messageMatch = text.match(/\[MESSAGE\]([\s\S]*)$/);
+        return {
+            advice: adviceMatch ? adviceMatch[1].trim() : "",
+            message: messageMatch ? messageMatch[1].trim() : text.trim(),
+        };
+    };
+
+    const { advice: coachAdvice, message: coachMessage } = parseCoachOutput(coachText);
+
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const stompClientRef = useRef<Client | null>(null);
@@ -174,19 +186,19 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
     };
 
     const handleUseCoachSuggestion = () => {
-        if (coachText) {
-            setNewMessage(coachText);
-            showToast("Coach suggestion added to your message", "success");
+        if (coachMessage) {
+            setNewMessage(coachMessage);
+            showToast("Message inserted into composer", "success");
         }
     };
 
     const handleUseAndSendCoachSuggestion = async () => {
-        if (!coachText.trim()) return;
+        if (!coachMessage.trim()) return;
         try {
-            await sendMessageContent(coachText.trim());
-            showToast("Coach suggestion sent", "success");
+            await sendMessageContent(coachMessage.trim());
+            showToast("Message sent!", "success");
         } catch {
-            showToast("Failed to send coach suggestion", "error");
+            showToast("Failed to send message", "error");
         }
     };
 
@@ -453,9 +465,28 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                             </div>
                         ) : (
                             <div className="space-y-4">
+                                {/* Advice Section */}
+                                {(coachAdvice || coachLoading) && (
+                                    <div className="border border-gray-200 p-4 bg-[#f7f7f6]">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Coach Analysis</span>
+                                            {coachLoading && !coachAdvice && (
+                                                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                                                    <Loader2 className="w-3 h-3 animate-spin" /> Thinking
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs leading-relaxed text-gray-600 whitespace-pre-wrap italic">
+                                            {coachAdvice}
+                                            {coachLoading && !coachMessage && <span className="inline-block w-1.5 h-4 bg-gray-400 ml-1 animate-pulse" />}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Draft Message Section */}
                                 <div className="border border-gray-200 p-4 bg-[#f7f7f6]">
                                     <div className="flex items-center justify-between mb-3">
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Draft Suggestion</span>
+                                        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Draft Message</span>
                                         {coachLoading && (
                                             <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-gray-500">
                                                 <Loader2 className="w-3 h-3 animate-spin" /> Streaming
@@ -463,15 +494,15 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                                         )}
                                     </div>
                                     <p className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">
-                                        {coachText}
-                                        {coachLoading && <span className="inline-block w-1.5 h-4 bg-black ml-1 animate-pulse" />}
+                                        {coachMessage || (coachLoading && coachAdvice ? "" : coachText)}
+                                        {coachLoading && coachAdvice && <span className="inline-block w-1.5 h-4 bg-black ml-1 animate-pulse" />}
                                     </p>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <button
                                         onClick={handleUseCoachSuggestion}
-                                        disabled={!coachText.trim()}
+                                        disabled={!coachMessage.trim()}
                                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-xs font-bold uppercase tracking-widest hover:border-black disabled:opacity-40"
                                     >
                                         <ChevronRight className="w-3 h-3" />
@@ -479,7 +510,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
                                     </button>
                                     <button
                                         onClick={handleUseAndSendCoachSuggestion}
-                                        disabled={!coachText.trim()}
+                                        disabled={!coachMessage.trim()}
                                         className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-gray-800 disabled:opacity-40"
                                     >
                                         <Send className="w-3 h-3" />

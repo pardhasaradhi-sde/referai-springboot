@@ -56,6 +56,8 @@ export function NotificationBell() {
         setIsOpen(false);
         if (notification.type === "NEW_REQUEST" || notification.type === "REQUEST_ACCEPTED" || notification.type === "REQUEST_DECLINED") {
             router.push("/dashboard/requests");
+        } else if (notification.type === "NEW_MESSAGE") {
+            router.push("/dashboard/requests"); // Navigate to requests where they can see active chats
         }
     };
 

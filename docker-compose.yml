@@ -25,7 +25,9 @@ services:
       - MAIL_SMTP_PORT=${MAIL_SMTP_PORT:-587}
       - MAIL_USERNAME=${MAIL_USERNAME:-}
       - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      - APP_PUBLIC_FRONTEND_URL=${APP_PUBLIC_FRONTEND_URL:-https://your-frontend.vercel.app}
+      - APP_PUBLIC_FRONTEND_URL=${APP_PUBLIC_FRONTEND_URL:-https://referai.vercel.app}
+      - WS_ALLOWED_ORIGINS=${WS_ALLOWED_ORIGINS:-https://referai.vercel.app}
+      - APP_JWT_EXPIRATION_MS=${APP_JWT_EXPIRATION_MS:-86400000}
     networks:
       - referai-net
     depends_on:

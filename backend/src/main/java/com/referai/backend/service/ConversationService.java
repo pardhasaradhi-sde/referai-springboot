@@ -2,6 +2,7 @@ package com.referai.backend.service;
 
 import com.referai.backend.dto.ConversationDto;
 import com.referai.backend.dto.MessageDto;
+import com.referai.backend.dto.NotificationDto;
 import com.referai.backend.dto.SendMessageRequest;
 import com.referai.backend.entity.Conversation;
 import com.referai.backend.entity.Message;
@@ -87,6 +88,21 @@ public class ConversationService {
         );
 
         Profile recipient = senderId.equals(conv.getSeeker().getId()) ? conv.getReferrer() : conv.getSeeker();
+
+        // ── Push real-time notification to recipient's bell icon ──
+        messagingTemplate.convertAndSendToUser(
+                recipient.getId().toString(),
+                "/queue/notifications",
+                new NotificationDto(
+                        UUID.randomUUID(),
+                        "NEW_MESSAGE",
+                        "New message from " + sender.getFullName(),
+                        cleanContent.length() > 80 ? cleanContent.substring(0, 77) + "..." : cleanContent,
+                        Instant.now(),
+                        false
+                )
+        );
+
         if (recipient.getEmail() != null && !recipient.getEmail().isBlank()) {
             emailService.sendNewMessageNotificationAsync(
                     recipient.getEmail(),

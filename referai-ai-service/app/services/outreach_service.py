@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import math
+from typing import AsyncGenerator
 
 from app.core.logging import get_logger
 from app.core.vector import cosine_similarity
 from app.db.postgres import get_postgres_pool
 from app.services.embedding_service import embed_query, embed_batch
-from app.services.llm_client import generate
+from app.services.llm_client import generate, generate_stream
 from app.services.outcome_service import get_outcome_patterns
 
 logger = get_logger(__name__)
@@ -340,3 +340,53 @@ async def generate_outreach_message(
             shared_skills=shared_skills,
         )
         return False, fallback_message, str(exc)
+
+
+async def generate_outreach_stream(
+    seeker_id: str,
+    referrer_id: str,
+    job_context: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """
+    Stream a personalized outreach message token-by-token via SSE.
+    Falls back to yielding the full fallback message on error.
+    """
+    try:
+        seeker = await _fetch_profile(seeker_id)
+        referrer = await _fetch_profile(referrer_id)
+
+        if not seeker or not referrer:
+            yield "Sorry, we couldn't load the profiles needed to generate this message."
+            return
+
+        retrieved_context = await _retrieve_relevant_context(seeker, referrer, job_context, top_k=4)
+        outcome_patterns = await get_outcome_patterns()
+        outcome_signals = (
+            str(outcome_patterns.get("averages_by_outcome", {}))
+            if outcome_patterns
+            else "No historical outcomes available yet."
+        )
+
+        prompt = _build_outreach_prompt(
+            seeker=seeker,
+            referrer=referrer,
+            job_context=job_context or "General referral request",
+            retrieved_context=retrieved_context,
+            outcome_signals=outcome_signals,
+        )
+
+        async for chunk in generate_stream(prompt):
+            yield chunk
+
+    except Exception as exc:
+        logger.exception("outreach.stream.failed", error=str(exc))
+        seeker_name = seeker.get("full_name", "") if isinstance(seeker, dict) else ""
+        referrer_name = referrer.get("full_name", "") if isinstance(referrer, dict) else ""
+        company = referrer.get("company", "") if isinstance(referrer, dict) else ""
+        fallback = _build_outreach_fallback(
+            seeker_name=seeker_name,
+            referrer_name=referrer_name,
+            company=company,
+            shared_skills=[],
+        )
+        yield fallback

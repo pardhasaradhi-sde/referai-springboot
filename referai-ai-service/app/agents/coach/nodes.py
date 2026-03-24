@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 
 from app.agents.coach.state import CoachState
 from app.core.logging import get_logger
@@ -333,39 +332,34 @@ async def analyze_situation(state: CoachState) -> CoachState:
 # ─────────────────────────────────────────────
 
 SUGGESTION_PROMPT = """\
-You are a proactive referral coach embedded in a referral conversation.
-You know EVERYTHING about both parties and the conversation history.
-Your job: give the seeker their NEXT BEST MOVE.
+You are an expert career coach.
+Your job: analyze the conversation, give brief advice, then write the exact next message the seeker should send.
 
 === PROFILES ===
-Seeker: {seeker_name} — {seeker_title}
-Referrer: {referrer_name} — {referrer_title} at {referrer_company}
+Seeker: {seeker_name} ({seeker_title})
+Referrer: {referrer_name} ({referrer_title} at {referrer_company})
 
 === RELEVANT CONTEXT ===
 {relevant_context}
 
-=== CONVERSATION SO FAR ===
+=== CONVERSATION HISTORY ===
 {conversation_text}
 
 === SITUATION ANALYSIS ===
 {situation_analysis}
-Advice type needed: {advice_type}
+Advice type: {advice_type}
 
-=== PREVIOUS ADVICE GIVEN (DO NOT REPEAT) ===
-{previous_advice}
+Previous advice given (do not repeat): {previous_advice}
 
-RULES:
-1. Be SPECIFIC — reference actual skills, projects, or experiences from the profiles
-2. Never repeat advice already given
-3. If it's too early to ask, explain what to do first
-4. If it's time to ask, draft the actual message for them
-5. Be warm and encouraging, like a great mentor
-6. Keep it under 150 words — actionable and direct
-7. Always address the seeker by name
-8. Reference the referrer by name when giving context
+Your response MUST follow this EXACT two-section format:
 
-Give your coaching suggestion now:
+[ADVICE]
+Your 1-2 sentence analysis of why this is the right move right now.
+
+[MESSAGE]
+The exact message {seeker_name} should send to {referrer_name}. First person, addresses {referrer_name} directly by first name. Maximum 100 words. No labels, no quotes — just the raw message text.
 """
+
 
 
 async def generate_suggestion(state: CoachState) -> CoachState:

@@ -27,16 +27,30 @@ async def _save_coach_state(conversation_id: str, state_data: dict) -> None:
 
     try:
         key = f"{COACH_STATE_PREFIX}{conversation_id}"
-        # Only save serializable parts
         serializable = {
             "conversation_id": state_data.get("conversation_id", ""),
             "current_stage": state_data.get("current_stage", "first_contact"),
             "advice_type": state_data.get("advice_type", ""),
             "situation_analysis": state_data.get("situation_analysis", ""),
+            "previous_advice_summary": state_data.get("suggestion", "")[:300] if state_data.get("suggestion") else "",
         }
         await client.setex(key, COACH_STATE_TTL, json.dumps(serializable))
     except Exception as exc:
         logger.warning("coach.state.save_failed", error=str(exc))
+
+
+async def _load_coach_state(conversation_id: str) -> dict:
+    """Restore coach state from Redis (falls back to empty if not found)."""
+    client = get_redis_client()
+    if client is None:
+        return {}
+    try:
+        key = f"{COACH_STATE_PREFIX}{conversation_id}"
+        raw = await client.get(key)
+        return json.loads(raw) if raw else {}
+    except Exception as exc:
+        logger.warning("coach.state.load_failed", error=str(exc))
+        return {}
 
 
 async def run_coach_pipeline(
@@ -51,12 +65,19 @@ async def run_coach_pipeline(
 
     Yields text chunks for SSE streaming.
     """
+    # 1. Restore previous state from Redis (conversation memory)
+    previous_state = await _load_coach_state(conversation_id)
+
     initial_state: CoachState = {
         "conversation_id": conversation_id,
         "seeker_id": seeker_id,
         "referrer_id": referrer_id,
         "current_message": current_message or "",
-        "current_stage": current_stage,
+        # Prefer the caller's explicit stage, but fall back to Redis
+        "current_stage": current_stage if current_stage != "first_contact" else previous_state.get("current_stage", current_stage),
+        # Seed prior advice so coach doesn't repeat itself
+        "previous_advice": [previous_state["previous_advice_summary"]] if previous_state.get("previous_advice_summary") else [],
+        "situation_analysis": previous_state.get("situation_analysis", ""),
     }
 
     try:

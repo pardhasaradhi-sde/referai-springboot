@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 from app.core.logging import get_logger
 from app.schemas.outreach import GenerateMessageRequest, GenerateMessageResponse
-from app.services.outreach_service import generate_outreach_message
+from app.services.outreach_service import generate_outreach_message, generate_outreach_stream
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api", tags=["outreach"])
@@ -39,4 +40,34 @@ async def generate_message(request: GenerateMessageRequest) -> GenerateMessageRe
         tone="professional",
         word_count=word_count,
         error=error,
+    )
+
+
+@router.post("/generate-message/stream")
+async def generate_message_stream(request: GenerateMessageRequest) -> StreamingResponse:
+    """
+    SSE streaming endpoint for outreach message generation.
+    Returns the message token-by-token for live frontend rendering.
+    """
+    logger.info(
+        "generate_message.stream.start",
+        seeker_id=request.seeker_id,
+        referrer_id=request.referrer_id,
+    )
+
+    async def event_generator():
+        async for chunk in generate_outreach_stream(
+            seeker_id=request.seeker_id,
+            referrer_id=request.referrer_id,
+            job_context=request.job_context,
+        ):
+            yield f"data: {chunk}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
