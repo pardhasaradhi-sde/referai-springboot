@@ -40,8 +40,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Allow SockJS iframe transport (used by @stomp/stompjs as a WebSocket fallback)
-                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
+                // Disable X-Frame-Options — SockJS iframe transport requires cross-origin (Vercel ↔ DuckDNS)
+                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
                 .authorizeHttpRequests(auth -> auth
                     // Async/SSE and error redispatches should not be re-authorized as new requests
                     .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR, DispatcherType.FORWARD).permitAll()
