@@ -53,10 +53,11 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
         registry.addEndpoint("/ws")
                 .setAllowedOrigins(origins)
                 .withSockJS()
-                .setStreamBytesLimit(512 * 1024)      // 512KB stream
-                .setHttpMessageCacheSize(1000)          // cached messages per session
-                .setDisconnectDelay(30_000)             // 30s disconnect delay
-                .setHeartbeatTime(25_000);              // 25s SockJS heartbeat
+                .setWebSocketEnabled(false)             // Skip native WS; use XHR-streaming (cleaner for proxy setups)
+                .setStreamBytesLimit(512 * 1024)        // 512KB stream
+                .setHttpMessageCacheSize(1000)           // cached messages per session
+                .setDisconnectDelay(30_000)              // 30s disconnect delay
+                .setHeartbeatTime(25_000);               // 25s SockJS heartbeat
     }
 
     @Override
