@@ -1,5 +1,6 @@
 # ReferAI — AI-Powered Referral Network
-
+> Try the app first: https://referai.vercel.app/
+> 
 > 70% of jobs are filled through referrals. Most job seekers apply cold anyway.  
 > ReferAI closes that gap.
 
